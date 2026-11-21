@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Sparkles, RefreshCw, Check, Upload } from 'lucide-react';
+import { X, Sparkles, RefreshCw, Check, Upload, Globe } from 'lucide-react';
 import { PRESET_PHOTOS, CATEGORIES, UNITS } from '../data/initialGroceries';
-import { findGroceryMatch, getGrocerySuggestions } from '../data/groceryDictionary';
+import { findGroceryMatch, getGrocerySuggestions, detectCategory } from '../data/groceryDictionary';
 import { groceryApi } from '../services/api';
 
 // Filter out 'all' from addable item categories
@@ -30,6 +30,7 @@ export default function AddItemModal({
   const [isFetchingRate, setIsFetchingRate] = useState(false);
 
   const fileInputRef = useRef(null);
+  const debounceTimerRef = useRef(null);
 
   // Sync / Reset state when modal opens or editItem changes
   useEffect(() => {
@@ -60,6 +61,9 @@ export default function AddItemModal({
         setSuggestions([]);
       }
     }
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
   }, [isOpen, editItem]);
 
   // Sort presets so photos matching selected category appear first!
@@ -75,8 +79,17 @@ export default function AddItemModal({
 
   if (!isOpen) return null;
 
+  // Smart Name Input Handler: Instant Local Match + Live Internet Auto-Fetch
   const handleNameChange = (val) => {
     setName(val);
+
+    // 1. Instant Category Detection (Tamil & English)
+    const detected = detectCategory(val);
+    if (detected && detected !== 'other') {
+      setCategory(detected);
+    }
+
+    // 2. Instant Local Dictionary Match
     const match = findGroceryMatch(val);
     if (match) {
       if (match.tamilName) setTamilName(match.tamilName);
@@ -84,11 +97,57 @@ export default function AddItemModal({
       if (match.emoji) setEmoji(match.emoji);
       if (match.photoUrl) setPhotoUrl(match.photoUrl);
       if (match.marketRate && !price) setPrice(match.marketRate.toString());
-      setAutoMatchStatus({ name: match.name, rate: match.marketRate, source: 'dictionary' });
+      setAutoMatchStatus({
+        name: match.name,
+        rate: match.marketRate,
+        category: match.category,
+        source: 'dictionary'
+      });
     } else {
       setAutoMatchStatus(null);
     }
     setSuggestions(getGrocerySuggestions(val));
+
+    // 3. Live Internet Auto-Fetch (Debounced 350ms)
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    const clean = val.trim();
+    if (clean.length >= 2) {
+      debounceTimerRef.current = setTimeout(async () => {
+        try {
+          const info = await groceryApi.autoFetchItemInfo(clean);
+          if (info && info.found) {
+            // Apply category from internet if not already set by dictionary
+            if (info.category && (!match || !match.category)) {
+              setCategory(info.category);
+            }
+            // Auto-set Internet Photo if user hasn't uploaded a custom photo
+            if (info.photoUrl && (!match || !match.photoUrl)) {
+              setPhotoUrl(info.photoUrl);
+            }
+            // Auto-set daily live rate
+            if (info.rate && !price) {
+              setPrice(info.rate.toString());
+            }
+            if (info.unit && (!editItem || !editItem.unit)) {
+              setUnit(info.unit);
+            }
+            if (info.emoji && (!emoji || emoji === '🛒')) {
+              setEmoji(info.emoji);
+            }
+            setAutoMatchStatus({
+              name: info.query || clean,
+              rate: info.rate,
+              category: info.category,
+              photoUrl: info.photoUrl,
+              lastUpdated: info.lastUpdated,
+              source: 'internet'
+            });
+          }
+        } catch (e) {
+          console.warn('Auto-fetch info failed', e);
+        }
+      }, 350);
+    }
   };
 
   const handleSelectSuggestion = (s) => {
@@ -222,12 +281,26 @@ export default function AddItemModal({
 
           {/* Auto-match Success Banner */}
           {autoMatchStatus && (
-            <div className="auto-match-badge-banner">
-              <Sparkles size={14} className="zap-pulse" />
-              <div>
-                <strong>Auto-matched: {autoMatchStatus.name}</strong>
-                {autoMatchStatus.rate ? <span> (சந்தை விலை: ₹{autoMatchStatus.rate})</span> : null}
+            <div className={`auto-match-badge-banner ${autoMatchStatus.source === 'internet' ? 'internet-badge' : ''}`}>
+              {autoMatchStatus.source === 'internet' ? (
+                <Globe size={15} className="zap-pulse" style={{ color: '#0284c7' }} />
+              ) : (
+                <Sparkles size={15} className="zap-pulse" />
+              )}
+              <div style={{ flex: 1 }}>
+                <strong>
+                  {autoMatchStatus.source === 'internet'
+                    ? (lang === 'ta' ? `🌐 இணையத்திலிருந்து படம் & விலை பெறப்பட்டது` : `🌐 Internet Matched: ${autoMatchStatus.name}`)
+                    : (lang === 'ta' ? `✨ தானாக பொருந்தியது: ${autoMatchStatus.name}` : `✨ Auto-matched: ${autoMatchStatus.name}`)}
+                </strong>
+                <span>
+                  {autoMatchStatus.rate ? ` • ${lang === 'ta' ? 'தினசரி சந்தை விலை' : 'Daily Market Rate'}: ₹${autoMatchStatus.rate}` : ''}
+                  {autoMatchStatus.lastUpdated ? ` (${autoMatchStatus.lastUpdated})` : ''}
+                </span>
               </div>
+              {photoUrl && (
+                <img src={photoUrl} alt="" style={{ width: '28px', height: '28px', borderRadius: '6px', objectFit: 'cover' }} />
+              )}
             </div>
           )}
 

@@ -141,6 +141,23 @@ export default function App() {
       .catch(err => console.warn('Could not load initial items from server', err));
   }, [household?.id]);
 
+  // Daily Live Market Rate Auto-Refresh on app launch
+  useEffect(() => {
+    if (!household?.id || !user) return;
+    const todayKey = 'smart_grocery_rates_day_' + new Date().toDateString();
+    const alreadyUpdatedToday = localStorage.getItem(todayKey);
+    if (!alreadyUpdatedToday) {
+      groceryApi.autoUpdateAllRates(household.id, user)
+        .then(res => {
+          if (res && res.items && res.items.length > 0) {
+            setItems(res.items);
+            localStorage.setItem(todayKey, 'true');
+          }
+        })
+        .catch(() => {});
+    }
+  }, [household?.id, user]);
+
   // Real-Time WebSocket Connection
   useEffect(() => {
     if (!household?.id || !user) return;

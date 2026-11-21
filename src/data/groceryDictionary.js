@@ -632,3 +632,46 @@ export function getGrocerySuggestions(inputText, limit = 5) {
 
   return results;
 }
+
+// Smart Category Detector based on keywords, English & Tamil names
+export function detectCategory(inputText) {
+  if (!inputText || !inputText.trim()) return 'vegetables';
+  const t = inputText.toLowerCase().trim();
+
+  // 1. Medicines & Healthcare
+  if (/dolo|paracetamol|tablet|syrup|capsule|pill|medicine|tonic|drops|ointment|balm|vicks|moov|volini|bandaid|bandage|cotton|inhaler|crocin|calpol|azithromycin|cetirizine|cough|fever|pain|injection|strip|மருந்து|மாத்திரை|தைலம்|இருமல்|காய்ச்சல்|சளி|பேன்ட்-எய்ட்/i.test(t)) {
+    return 'medicines';
+  }
+
+  // 2. Fruits
+  if (/apple|banana|orange|grape|mango|papaya|pomegranate|watermelon|pineapple|guava|strawberry|lemon|lime|mosambi|berry|kiwi|chikoo|sapota|fig|dates|plum|peach|pear|cherries|muskmelon|avocado|custard|பழம்|ஆப்பிள்|வாழைப்பழம்|மாம்பழம்|திராட்சை|மாதுளை|பப்பாளி|எலுமிச்சை|அன்னாசி/i.test(t)) {
+    return 'fruits';
+  }
+
+  // 3. Dairy & Eggs
+  if (/milk|curd|yogurt|paneer|cheese|butter|ghee|egg|eggs|muttai|cream|buttermilk|lassi|aavin|hatsun|pal|paal|பால்|முட்டை|தயிர்|பன்னீர்|வெண்ணெய்|நெய்/i.test(t)) {
+    return 'dairy';
+  }
+
+  // 4. Staples & Grains
+  if (/rice|wheat|atta|flour|maida|rava|sooji|dal|dhal|gram|paruppu|oil|sunflower|groundnut|gingelly|sugar|salt|jaggery|chilli powder|turmeric|coriander powder|pepper|jeera|cumin|mustard|fenugreek|cardamom|clove|cinnamon|asam|asafoetida|perungayam|tamarind|puli|kadalai|ulunthu|pasi|payiru|dalia|அரிசி|கோதுமை|மாவு|பருப்பு|எண்ணெய்|சர்க்கரை|உப்பு|வெல்லம்|மஞ்சள்|மிளகாய் தூள்|சீரகம்|கடுகு|புளி|கடலை/i.test(t)) {
+    return 'staples';
+  }
+
+  // 5. Bakery
+  if (/bread|bun|pav|toast|cake|rusk|pastry|croissant|muffin|bake|பிரெட்|ரொட்டி|கேக்|பன்/i.test(t)) {
+    return 'bakery';
+  }
+
+  // 6. Snacks & Drinks
+  if (/tea|coffee|biscuit|cookie|chips|mixture|murukku|chocolate|sweet|noodles|maggi|pasta|oats|cornflakes|juice|soda|snack|drink|badam|cashew|almond|nut|walnut|pista|காபி|தேயிலை|பிஸ்கட்|நூடுல்ஸ்|சிப்ஸ்/i.test(t)) {
+    return 'snacks';
+  }
+
+  // 7. Vegetables
+  if (/tomato|onion|potato|carrot|bean|beetroot|cabbage|cauliflower|spinach|keerai|mushroom|brinjal|eggplant|ladysfinger|okra|vendakkai|ginger|garlic|chilli|capsicum|cucumber|radish|peas|corn|gourd|coriander|mint|curry leaves|onion|shallot|drumstick|murungakkai|broccoli|vazhaikkai|kothavarai|தக்காளி|வெங்காயம்|உருளை|கேரட்|வெண்டைக்காய்|கத்தரிக்காய்|பீன்ஸ்|முட்டைக்கோஸ்|கீரை|இஞ்சி|பூண்டு|மிளகாய்|கொத்தமல்லி|புதினா|முருங்கை/i.test(t)) {
+    return 'vegetables';
+  }
+
+  return 'other';
+}

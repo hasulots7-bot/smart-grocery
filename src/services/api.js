@@ -303,6 +303,16 @@ export const groceryApi = {
     }
   },
 
+  async autoFetchItemInfo(query) {
+    try {
+      return await safeFetchJson(
+        `/groceries/auto-fetch-info?q=${encodeURIComponent(query)}`
+      );
+    } catch {
+      return null;
+    }
+  },
+
   async autoUpdateAllRates(householdId, senderUser) {
     try {
       return await safeFetchJson(`/groceries/${householdId}/auto-update-rates`, {

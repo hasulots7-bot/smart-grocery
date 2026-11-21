@@ -2150,6 +2150,19 @@
   font-weight: 600;
 }
 
+.auto-match-badge-banner.internet-badge {
+  background: #f0f9ff;
+  border-color: #7dd3fc;
+}
+
+.auto-match-badge-banner.internet-badge strong {
+  color: #0369a1;
+}
+
+.auto-match-badge-banner.internet-badge span {
+  color: #0284c7;
+}
+
 /* Auto Suggestions Row while typing */
 .auto-suggestions-row {
   display: flex;

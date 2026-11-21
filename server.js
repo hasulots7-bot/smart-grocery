@@ -525,6 +525,124 @@ app.get('/api/market-price', (req, res) => {
   }
 });
 
+// Smart Auto-Fetch Endpoint: Internet Photo, Auto-Category, & Daily Live Rate
+app.get('/api/groceries/auto-fetch-info', async (req, res) => {
+  const query = (req.query.q || '').trim();
+  if (!query) {
+    return res.status(400).json({ error: 'Query q is required' });
+  }
+
+  // 1. Auto-detect category based on Tamil / English keywords
+  let category = 'vegetables';
+  const qLower = query.toLowerCase();
+  if (/dolo|paracetamol|tablet|syrup|capsule|pill|medicine|tonic|drops|ointment|balm|vicks|moov|volini|bandaid|bandage|cotton|inhaler|crocin|calpol|azithromycin|cetirizine|cough|fever|pain|injection|strip|மருந்து|மாத்திரை|தைலம்|இருமல்|காய்ச்சல்|சளி/i.test(qLower)) {
+    category = 'medicines';
+  } else if (/apple|banana|orange|grape|mango|papaya|pomegranate|watermelon|pineapple|guava|strawberry|lemon|lime|mosambi|berry|kiwi|chikoo|sapota|fig|dates|plum|peach|pear|cherries|muskmelon|avocado|பழம்|ஆப்பிள்|வாழைப்பழம்|மாம்பழம்|திராட்சை|மாதுளை|பப்பாளி|எலுமிச்சை|அன்னாசி/i.test(qLower)) {
+    category = 'fruits';
+  } else if (/milk|curd|yogurt|paneer|cheese|butter|ghee|egg|eggs|muttai|cream|buttermilk|lassi|aavin|hatsun|pal|paal|பால்|முட்டை|தயிர்|பன்னீர்|வெண்ணெய்|நெய்/i.test(qLower)) {
+    category = 'dairy';
+  } else if (/rice|wheat|atta|flour|maida|rava|sooji|dal|dhal|gram|paruppu|oil|sunflower|groundnut|gingelly|sugar|salt|jaggery|chilli powder|turmeric|coriander powder|pepper|jeera|cumin|mustard|fenugreek|cardamom|clove|cinnamon|asam|asafoetida|perungayam|tamarind|puli|kadalai|ulunthu|அரிசி|கோதுமை|மாவு|பருப்பு|எண்ணெய்|சர்க்கரை|உப்பு|வெல்லம்|மஞ்சள்|மிளகாய் தூள்|சீரகம்|கடுகு|புளி|கடலை/i.test(qLower)) {
+    category = 'staples';
+  } else if (/bread|bun|pav|toast|cake|rusk|pastry|croissant|muffin|பிரெட்|ரொட்டி|கேக்|பன்/i.test(qLower)) {
+    category = 'bakery';
+  } else if (/tea|coffee|biscuit|cookie|chips|mixture|murukku|chocolate|sweet|noodles|maggi|pasta|oats|cornflakes|juice|soda|snack|drink|badam|cashew|almond|nut|walnut|pista|காபி|தேயிலை|பிஸ்கட்|நூடுல்ஸ்/i.test(qLower)) {
+    category = 'snacks';
+  } else if (/tomato|onion|potato|carrot|bean|beetroot|cabbage|cauliflower|spinach|keerai|mushroom|brinjal|eggplant|ladysfinger|okra|vendakkai|ginger|garlic|chilli|capsicum|cucumber|radish|peas|corn|gourd|coriander|mint|curry leaves|onion|shallot|drumstick|murungakkai|broccoli|தக்காளி|வெங்காயம்|உருளை|கேரட்|வெண்டைக்காய்|கத்தரிக்காய்|பீன்ஸ்|முட்டைக்கோஸ்|கீரை|இஞ்சி|பூண்டு|மிளகாய்/i.test(qLower)) {
+    category = 'vegetables';
+  }
+
+  // 2. Daily fluctuating rate based on calendar day
+  const dayOfMonth = new Date().getDate();
+  const fluctuationPercent = ((dayOfMonth % 7) - 3); // -3% to +3% daily variation
+
+  let matchedRate = null;
+  let unit = 'kg';
+  for (const [key, val] of Object.entries(MARKET_PRICES)) {
+    if (key.toLowerCase() === qLower || qLower.includes(key.toLowerCase()) || key.toLowerCase().includes(qLower)) {
+      matchedRate = val;
+      break;
+    }
+  }
+
+  let finalPrice = 45;
+  if (matchedRate) {
+    finalPrice = Math.max(1, Math.round(matchedRate.currentPrice * (1 + fluctuationPercent / 100)));
+    unit = matchedRate.unit || 'kg';
+  } else if (category === 'medicines') {
+    finalPrice = 35 + (dayOfMonth % 20);
+    unit = 'strip';
+  } else if (category === 'fruits') {
+    finalPrice = 80 + (dayOfMonth % 40);
+    unit = 'kg';
+  } else if (category === 'dairy') {
+    finalPrice = 30 + (dayOfMonth % 15);
+    unit = 'pkt';
+  } else if (category === 'staples') {
+    finalPrice = 60 + (dayOfMonth % 50);
+    unit = 'kg';
+  } else if (category === 'bakery') {
+    finalPrice = 40 + (dayOfMonth % 10);
+    unit = 'pack';
+  } else if (category === 'snacks') {
+    finalPrice = 50 + (dayOfMonth % 30);
+    unit = 'pack';
+  } else {
+    finalPrice = 35 + (dayOfMonth % 25);
+    unit = 'kg';
+  }
+
+  // 3. Auto-fetch real photo from Internet (Wikipedia Summary API)
+  let photoUrl = '';
+  try {
+    const wikiRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`, {
+      headers: { 'User-Agent': 'SmartGroceryApp/2.0 (image-fetcher)' }
+    });
+    if (wikiRes.ok) {
+      const wikiData = await wikiRes.json();
+      if (wikiData.thumbnail && wikiData.thumbnail.source) {
+        photoUrl = wikiData.thumbnail.source;
+      }
+    }
+  } catch (err) {}
+
+  // Curated Fallback Unsplash Photos
+  if (!photoUrl) {
+    const categoryUnsplashPhotos = {
+      medicines: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=500&auto=format&fit=crop&q=80',
+      vegetables: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500&auto=format&fit=crop&q=80',
+      fruits: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=500&auto=format&fit=crop&q=80',
+      dairy: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=500&auto=format&fit=crop&q=80',
+      staples: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=500&auto=format&fit=crop&q=80',
+      bakery: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=500&auto=format&fit=crop&q=80',
+      snacks: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=500&auto=format&fit=crop&q=80',
+      other: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=500&auto=format&fit=crop&q=80'
+    };
+    photoUrl = categoryUnsplashPhotos[category] || categoryUnsplashPhotos.other;
+  }
+
+  const categoryEmojis = {
+    medicines: '💊',
+    vegetables: '🥬',
+    fruits: '🍎',
+    dairy: '🥛',
+    staples: '🌾',
+    bakery: '🍞',
+    snacks: '☕',
+    other: '📦'
+  };
+
+  res.json({
+    found: true,
+    query,
+    category,
+    emoji: categoryEmojis[category] || '🛒',
+    rate: finalPrice,
+    unit,
+    photoUrl,
+    lastUpdated: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+  });
+});
+
 app.get('/api/groceries/live-rate/:name', (req, res) => {
   const query = (req.params.name || '').trim();
   let matched = null;
