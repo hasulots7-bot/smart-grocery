@@ -455,6 +455,8 @@ export default function App() {
             <SummaryCard
               lang={lang}
               items={items}
+              household={household}
+              user={user}
               onDeletePurchased={handleDeletePurchased}
               onSelectAll={() => {
                 const allP = items.every(i => i.purchased);
@@ -463,10 +465,13 @@ export default function App() {
               }}
               onOpenAddModal={() => { setEditItem(null); setIsAddModalOpen(true); }}
               onOpenShareModal={() => setIsShareModalOpen(true)}
+              onUpdateAllOnlineRates={handleUpdateAllOnlineRates}
+              isUpdatingRates={isUpdatingRates}
             />
 
             <FilterBar
               lang={lang}
+              items={items}
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               statusFilter={statusFilter}

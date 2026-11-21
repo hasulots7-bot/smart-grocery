@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Search, X } from 'lucide-react';
 import { CATEGORIES } from '../data/initialGroceries';
 
 export default function FilterBar({
   lang,
+  items = [],
   searchQuery,
   setSearchQuery,
   statusFilter,
@@ -14,15 +15,25 @@ export default function FilterBar({
   purchasedCount,
   totalCount
 }) {
+  // Compute item count per category
+  const categoryCounts = useMemo(() => {
+    const counts = {};
+    items.forEach(item => {
+      const cat = item.category || 'other';
+      counts[cat] = (counts[cat] || 0) + 1;
+    });
+    return counts;
+  }, [items]);
+
   return (
     <div className="filter-bar-container">
       {/* Search Input */}
       <div className="search-box-wrap">
-        <Search size={18} className="search-icon" />
+        <Search size={16} className="search-icon" />
         <input
           type="text"
           className="search-input"
-          placeholder={lang === 'ta' ? 'பொருட்களைத் தேடுங்கள் (எ.கா: தக்காளி, பால்)...' : 'Search groceries (e.g. Tomato, Milk)...'}
+          placeholder={lang === 'ta' ? 'பொருட்களைத் தேடுங்கள் (எ.கா: தக்காளி, Dolo, பால்)...' : 'Search groceries (e.g. Tomato, Dolo, Milk)...'}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
@@ -33,7 +44,7 @@ export default function FilterBar({
             onClick={() => setSearchQuery('')}
             aria-label="Clear search"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         )}
       </div>
@@ -63,7 +74,7 @@ export default function FilterBar({
           className={`status-tab ${statusFilter === 'purchased' ? 'active' : ''}`}
           onClick={() => setStatusFilter('purchased')}
         >
-          <span>{lang === 'ta' ? 'வாங்கியவை' : 'Purchased'}</span>
+          <span>{lang === 'ta' ? 'வாங்கியவை' : 'Bought'}</span>
           <span className="tab-badge purchased-badge">{purchasedCount}</span>
         </button>
       </div>
@@ -72,6 +83,7 @@ export default function FilterBar({
       <div className="category-chips-scroll">
         {CATEGORIES.map((cat) => {
           const isSelected = selectedCategory === cat.id;
+          const count = cat.id === 'all' ? totalCount : (categoryCounts[cat.id] || 0);
           return (
             <button
               key={cat.id}
@@ -83,6 +95,11 @@ export default function FilterBar({
               <span className="chip-label">
                 {lang === 'ta' ? cat.labelTa : cat.labelEn}
               </span>
+              {count > 0 && (
+                <span className={`chip-count-badge ${isSelected ? 'active' : ''}`}>
+                  {count}
+                </span>
+              )}
             </button>
           );
         })}

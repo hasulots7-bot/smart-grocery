@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Sparkles, RefreshCw, Check, Upload } from 'lucide-react';
 import { PRESET_PHOTOS, CATEGORIES, UNITS } from '../data/initialGroceries';
 import { findGroceryMatch, getGrocerySuggestions } from '../data/groceryDictionary';
 import { groceryApi } from '../services/api';
+
+// Filter out 'all' from addable item categories
+const ADD_CATEGORIES = CATEGORIES.filter(c => c.id !== 'all');
 
 export default function AddItemModal({
   isOpen,
@@ -59,6 +62,17 @@ export default function AddItemModal({
     }
   }, [isOpen, editItem]);
 
+  // Sort presets so photos matching selected category appear first!
+  const sortedPresets = useMemo(() => {
+    return [...PRESET_PHOTOS].sort((a, b) => {
+      const aMatch = a.category === category;
+      const bMatch = b.category === category;
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0;
+    });
+  }, [category]);
+
   if (!isOpen) return null;
 
   const handleNameChange = (val) => {
@@ -88,11 +102,23 @@ export default function AddItemModal({
     setSuggestions([]);
   };
 
+  const handleCategorySelect = (cat) => {
+    setCategory(cat.id);
+    if (!emoji || emoji === '🛒') {
+      setEmoji(cat.icon);
+    }
+    // Pick the first photo from this category if current photo is generic
+    const matchPhoto = PRESET_PHOTOS.find(p => p.category === cat.id);
+    if (matchPhoto && (!photoUrl || photoUrl === PRESET_PHOTOS[0]?.url)) {
+      setPhotoUrl(matchPhoto.url);
+    }
+  };
+
   const handleFetchLiveRate = async () => {
     if (!name.trim()) return;
     setIsFetchingRate(true);
     try {
-      const res = await groceryApi.fetchLiveRate(name);
+      const res = await groceryApi.fetchLiveRate(name, category);
       if (res && res.rate) {
         setPrice(res.rate.toString());
         setAutoMatchStatus({ name, rate: res.rate, source: 'live-market' });
@@ -125,9 +151,9 @@ export default function AddItemModal({
       id: editItem?.id || `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       name: name.trim(),
       tamilName: tamilName.trim() || name.trim(),
-      category,
+      category: category || 'vegetables',
       quantity: quantity.trim() || '1',
-      unit,
+      unit: unit || 'kg',
       price: price.trim() ? Number(price) : 0,
       photoUrl: photoUrl || PRESET_PHOTOS[0]?.url || '',
       emoji: emoji || '🛒',
@@ -160,7 +186,9 @@ export default function AddItemModal({
         <form onSubmit={handleSubmit} className="modal-form">
           {/* Item Name (English) */}
           <div className="form-field">
-            <label>{lang === 'ta' ? 'பொருள் பெயர் (English)*' : 'Item Name (English)*'}</label>
+            <label className="field-label-bold">
+              {lang === 'ta' ? 'பொருள் பெயர் (English)*' : 'Item Name (English)*'}
+            </label>
             <input
               type="text"
               value={name}
@@ -203,10 +231,40 @@ export default function AddItemModal({
             </div>
           )}
 
+          {/* CATEGORY VISUAL SELECTOR (Interactive Chips) */}
+          <div className="form-field">
+            <div className="cat-label-row">
+              <label className="field-label-bold">
+                {lang === 'ta' ? 'வகை / பிரிவு (Category)*' : 'Category*'}
+              </label>
+              <span className="cat-active-indicator">
+                {ADD_CATEGORIES.find(c => c.id === category)?.icon} {lang === 'ta' ? ADD_CATEGORIES.find(c => c.id === category)?.labelTa : ADD_CATEGORIES.find(c => c.id === category)?.labelEn}
+              </span>
+            </div>
+
+            <div className="category-select-grid">
+              {ADD_CATEGORIES.map(cat => {
+                const isSelected = category === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    className={`category-select-chip ${isSelected ? 'selected' : ''}`}
+                    onClick={() => handleCategorySelect(cat)}
+                  >
+                    <span className="cat-chip-icon">{cat.icon}</span>
+                    <span className="cat-chip-name">{lang === 'ta' ? cat.labelTa : cat.labelEn}</span>
+                    {isSelected && <span className="cat-chip-check">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Tamil Name & Emoji Row */}
           <div className="form-group-row">
             <div className="form-field">
-              <label>{lang === 'ta' ? 'தமிழ் பெயர் (Tamil Name)' : 'Tamil Name'}</label>
+              <label className="field-label-bold">{lang === 'ta' ? 'தமிழ் பெயர் (Tamil Name)' : 'Tamil Name'}</label>
               <input
                 type="text"
                 value={tamilName}
@@ -215,7 +273,7 @@ export default function AddItemModal({
               />
             </div>
             <div className="form-field">
-              <label>{lang === 'ta' ? 'Emoji / ஐகான்' : 'Emoji Icon'}</label>
+              <label className="field-label-bold">{lang === 'ta' ? 'Emoji ஐகான்' : 'Emoji Icon'}</label>
               <input
                 type="text"
                 value={emoji}
@@ -226,31 +284,39 @@ export default function AddItemModal({
             </div>
           </div>
 
-          {/* Category & Price Row */}
-          <div className="form-group-row">
+          {/* Quantity, Unit & Price Row */}
+          <div className="form-group-3col">
             <div className="form-field">
-              <label>{lang === 'ta' ? 'வகை (Category)' : 'Category'}</label>
-              <select className="styled-select" value={category} onChange={(e) => setCategory(e.target.value)}>
-                {CATEGORIES.map(cat => (
-                  <option key={cat.id} value={cat.id}>
-                    {lang === 'ta' ? cat.nameTa : cat.nameEn}
-                  </option>
+              <label className="field-label-bold">{lang === 'ta' ? 'அளவு' : 'Quantity'}</label>
+              <input
+                type="text"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                placeholder="1, 500, 2..."
+              />
+            </div>
+
+            <div className="form-field">
+              <label className="field-label-bold">{lang === 'ta' ? 'அலகு' : 'Unit'}</label>
+              <select className="styled-select" value={unit} onChange={(e) => setUnit(e.target.value)}>
+                {UNITS.map(u => (
+                  <option key={u} value={u}>{u}</option>
                 ))}
               </select>
             </div>
 
             <div className="form-field">
               <div className="price-label-row">
-                <label>{lang === 'ta' ? 'தோராய விலை (₹ Price)' : 'Est. Price (₹)'}</label>
+                <label className="field-label-bold">{lang === 'ta' ? 'விலை (₹)' : 'Price (₹)'}</label>
                 <button
                   type="button"
                   className="fetch-rate-inline-btn"
                   onClick={handleFetchLiveRate}
                   disabled={isFetchingRate || !name.trim()}
-                  title="Fetch live market price"
+                  title="Fetch live online rate"
                 >
                   <RefreshCw size={10} className={isFetchingRate ? 'spin-icon' : ''} />
-                  <span>{isFetchingRate ? '...' : '⚡ Rate'}</span>
+                  <span>{isFetchingRate ? '...' : '⚡'}</span>
                 </button>
               </div>
               <input
@@ -261,27 +327,6 @@ export default function AddItemModal({
                 step="0.5"
                 min="0"
               />
-            </div>
-          </div>
-
-          {/* Quantity & Unit Row */}
-          <div className="form-group-row">
-            <div className="form-field">
-              <label>{lang === 'ta' ? 'அளவு (Quantity)' : 'Quantity'}</label>
-              <input
-                type="text"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                placeholder="1, 500, 2..."
-              />
-            </div>
-            <div className="form-field">
-              <label>{lang === 'ta' ? 'அலகு (Unit)' : 'Unit'}</label>
-              <select className="styled-select" value={unit} onChange={(e) => setUnit(e.target.value)}>
-                {UNITS.map(u => (
-                  <option key={u} value={u}>{u}</option>
-                ))}
-              </select>
             </div>
           </div>
 
@@ -324,7 +369,7 @@ export default function AddItemModal({
 
             {photoTab === 'presets' && (
               <div className="preset-photos-grid">
-                {PRESET_PHOTOS.map((p, idx) => (
+                {sortedPresets.map((p, idx) => (
                   <div
                     key={idx}
                     className={`preset-photo-card ${photoUrl === p.url ? 'selected' : ''}`}
@@ -383,7 +428,7 @@ export default function AddItemModal({
 
           {/* Notes */}
           <div className="form-field">
-            <label>{lang === 'ta' ? 'குறிப்புகள் (Notes / Brand)' : 'Notes / Brand'}</label>
+            <label className="field-label-bold">{lang === 'ta' ? 'குறிப்புகள் (Notes / Brand)' : 'Notes / Brand'}</label>
             <input
               type="text"
               value={notes}
