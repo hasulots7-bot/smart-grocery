@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { X, Sparkles, RefreshCw, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Sparkles, RefreshCw, Check, Upload } from 'lucide-react';
 import { PRESET_PHOTOS, CATEGORIES, UNITS } from '../data/initialGroceries';
 import { findGroceryMatch, getGrocerySuggestions } from '../data/groceryDictionary';
 import { groceryApi } from '../services/api';
@@ -11,16 +11,16 @@ export default function AddItemModal({
   editItem,
   lang
 }) {
-  const [name, setName] = useState(editItem?.name || '');
-  const [tamilName, setTamilName] = useState(editItem?.tamilName || '');
-  const [category, setCategory] = useState(editItem?.category || 'vegetables');
-  const [quantity, setQuantity] = useState(editItem?.quantity || '1');
-  const [unit, setUnit] = useState(editItem?.unit || 'kg');
-  const [price, setPrice] = useState(editItem?.price ? editItem.price.toString() : '');
-  const [photoUrl, setPhotoUrl] = useState(editItem?.photoUrl || PRESET_PHOTOS[0].url);
-  const [emoji, setEmoji] = useState(editItem?.emoji || '🛒');
-  const [notes, setNotes] = useState(editItem?.notes || '');
-  const [photoTab, setPhotoTab] = useState(editItem?.photoUrl?.startsWith('data:') ? 'upload' : 'presets');
+  const [name, setName] = useState('');
+  const [tamilName, setTamilName] = useState('');
+  const [category, setCategory] = useState('vegetables');
+  const [quantity, setQuantity] = useState('1');
+  const [unit, setUnit] = useState('kg');
+  const [price, setPrice] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [emoji, setEmoji] = useState('🛒');
+  const [notes, setNotes] = useState('');
+  const [photoTab, setPhotoTab] = useState('presets');
   
   const [autoMatchStatus, setAutoMatchStatus] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
@@ -28,21 +28,64 @@ export default function AddItemModal({
 
   const fileInputRef = useRef(null);
 
+  // Sync / Reset state when modal opens or editItem changes
+  useEffect(() => {
+    if (isOpen) {
+      if (editItem) {
+        setName(editItem.name || '');
+        setTamilName(editItem.tamilName || '');
+        setCategory(editItem.category || 'vegetables');
+        setQuantity(editItem.quantity ? editItem.quantity.toString() : '1');
+        setUnit(editItem.unit || 'kg');
+        setPrice(editItem.price ? editItem.price.toString() : '');
+        setPhotoUrl(editItem.photoUrl || PRESET_PHOTOS[0]?.url || '');
+        setEmoji(editItem.emoji || '🛒');
+        setNotes(editItem.notes || '');
+        setPhotoTab(editItem.photoUrl?.startsWith('data:') ? 'upload' : 'presets');
+      } else {
+        setName('');
+        setTamilName('');
+        setCategory('vegetables');
+        setQuantity('1');
+        setUnit('kg');
+        setPrice('');
+        setPhotoUrl(PRESET_PHOTOS[0]?.url || '');
+        setEmoji('🛒');
+        setNotes('');
+        setPhotoTab('presets');
+        setAutoMatchStatus(null);
+        setSuggestions([]);
+      }
+    }
+  }, [isOpen, editItem]);
+
   if (!isOpen) return null;
 
   const handleNameChange = (val) => {
     setName(val);
     const match = findGroceryMatch(val);
     if (match) {
-      if (match.tamil) setTamilName(match.tamil);
+      if (match.tamilName) setTamilName(match.tamilName);
       if (match.category) setCategory(match.category);
       if (match.emoji) setEmoji(match.emoji);
-      if (match.defaultPhoto) setPhotoUrl(match.defaultPhoto);
-      setAutoMatchStatus({ name: match.name, rate: match.estPrice, source: 'dictionary' });
+      if (match.photoUrl) setPhotoUrl(match.photoUrl);
+      if (match.marketRate && !price) setPrice(match.marketRate.toString());
+      setAutoMatchStatus({ name: match.name, rate: match.marketRate, source: 'dictionary' });
     } else {
       setAutoMatchStatus(null);
     }
     setSuggestions(getGrocerySuggestions(val));
+  };
+
+  const handleSelectSuggestion = (s) => {
+    setName(s.name);
+    if (s.tamilName) setTamilName(s.tamilName);
+    if (s.category) setCategory(s.category);
+    if (s.emoji) setEmoji(s.emoji);
+    if (s.photoUrl) setPhotoUrl(s.photoUrl);
+    if (s.marketRate) setPrice(s.marketRate.toString());
+    setAutoMatchStatus({ name: s.name, rate: s.marketRate, source: 'dictionary' });
+    setSuggestions([]);
   };
 
   const handleFetchLiveRate = async () => {
@@ -86,7 +129,7 @@ export default function AddItemModal({
       quantity: quantity.trim() || '1',
       unit,
       price: price.trim() ? Number(price) : 0,
-      photoUrl: photoUrl || PRESET_PHOTOS[0].url,
+      photoUrl: photoUrl || PRESET_PHOTOS[0]?.url || '',
       emoji: emoji || '🛒',
       notes: notes.trim(),
       purchased: editItem ? editItem.purchased : false,
@@ -96,95 +139,98 @@ export default function AddItemModal({
   };
 
   return (
-    <div className="modal-backdrop">
-      <div className="modal-content add-item-modal">
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-sheet add-item-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-drag-handle"></div>
+
         <div className="modal-header">
-          <h2>
-            {editItem
-              ? (lang === 'ta' ? '✏️ பொருளை திருத்து' : '✏️ Edit Item')
-              : (lang === 'ta' ? '➕ புதிய பொருள் சேர்க்க' : '➕ Add New Item')}
-          </h2>
-          <button type="button" className="close-btn" onClick={onClose}>
-            <X size={20} />
+          <div className="modal-title-wrap">
+            <span className="modal-icon">{editItem ? '✏️' : '➕'}</span>
+            <h2>
+              {editItem
+                ? (lang === 'ta' ? 'பொருளை திருத்து' : 'Edit Item')
+                : (lang === 'ta' ? 'புதிய பொருள் சேர்க்க' : 'Add New Item')}
+            </h2>
+          </div>
+          <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close">
+            <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="add-item-form">
-          <div className="form-group">
+        <form onSubmit={handleSubmit} className="modal-form">
+          {/* Item Name (English) */}
+          <div className="form-field">
             <label>{lang === 'ta' ? 'பொருள் பெயர் (English)*' : 'Item Name (English)*'}</label>
-            <div className="input-with-action">
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="e.g. Tomato, Milk, Rice..."
-                required
-                autoFocus
-              />
-              <button
-                type="button"
-                className="live-rate-btn"
-                onClick={handleFetchLiveRate}
-                disabled={isFetchingRate || !name.trim()}
-                title="Fetch live market price"
-              >
-                <RefreshCw size={14} className={isFetchingRate ? 'spin-icon' : ''} />
-                <span>{isFetchingRate ? '...' : '⚡ Rate'}</span>
-              </button>
-            </div>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => handleNameChange(e.target.value)}
+              placeholder="e.g. Tomato, Milk, Dolo 650, Rice..."
+              required
+            />
+          </div>
 
-            {suggestions.length > 0 && !editItem && (
-              <div className="suggestions-chips">
+          {/* Quick Suggestion Chips */}
+          {suggestions.length > 0 && !editItem && (
+            <div className="auto-suggestions-row">
+              <span className="sugg-hint">✨ {lang === 'ta' ? 'பரிந்துரைகள் (Tap to autofill):' : 'Suggestions:'}</span>
+              <div className="sugg-chips-wrap">
                 {suggestions.map((s, idx) => (
                   <button
                     type="button"
                     key={idx}
-                    className="suggestion-chip"
-                    onClick={() => handleNameChange(s.name)}
+                    className="sugg-chip"
+                    onClick={() => handleSelectSuggestion(s)}
                   >
-                    {s.emoji} {s.name} ({s.tamil})
+                    {s.photoUrl && <img src={s.photoUrl} alt="" className="sugg-thumb" />}
+                    <span>{s.emoji} {s.name}</span>
+                    {s.tamilName && <small>({s.tamilName})</small>}
+                    {s.marketRate && <span className="sugg-rate">₹{s.marketRate}</span>}
                   </button>
                 ))}
               </div>
-            )}
+            </div>
+          )}
 
-            {autoMatchStatus && (
-              <div className="auto-match-badge">
-                <Sparkles size={12} />
-                <span>
-                  Auto-matched: <strong>{autoMatchStatus.name}</strong>
-                  {autoMatchStatus.rate ? ` (Est. ₹${autoMatchStatus.rate})` : ''}
-                </span>
+          {/* Auto-match Success Banner */}
+          {autoMatchStatus && (
+            <div className="auto-match-badge-banner">
+              <Sparkles size={14} className="zap-pulse" />
+              <div>
+                <strong>Auto-matched: {autoMatchStatus.name}</strong>
+                {autoMatchStatus.rate ? <span> (சந்தை விலை: ₹{autoMatchStatus.rate})</span> : null}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div className="form-row">
-            <div className="form-group">
+          {/* Tamil Name & Emoji Row */}
+          <div className="form-group-row">
+            <div className="form-field">
               <label>{lang === 'ta' ? 'தமிழ் பெயர் (Tamil Name)' : 'Tamil Name'}</label>
               <input
                 type="text"
                 value={tamilName}
                 onChange={(e) => setTamilName(e.target.value)}
-                placeholder="எ.கா. தக்காளி"
+                placeholder="எ.கா. தக்காளி, பால்..."
               />
             </div>
-            <div className="form-group">
+            <div className="form-field">
               <label>{lang === 'ta' ? 'Emoji / ஐகான்' : 'Emoji Icon'}</label>
               <input
                 type="text"
                 value={emoji}
                 onChange={(e) => setEmoji(e.target.value)}
                 maxLength={4}
-                className="emoji-input-field"
+                style={{ textAlign: 'center', fontSize: '18px' }}
               />
             </div>
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
+          {/* Category & Price Row */}
+          <div className="form-group-row">
+            <div className="form-field">
               <label>{lang === 'ta' ? 'வகை (Category)' : 'Category'}</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)}>
+              <select className="styled-select" value={category} onChange={(e) => setCategory(e.target.value)}>
                 {CATEGORIES.map(cat => (
                   <option key={cat.id} value={cat.id}>
                     {lang === 'ta' ? cat.nameTa : cat.nameEn}
@@ -193,24 +239,34 @@ export default function AddItemModal({
               </select>
             </div>
 
-            <div className="form-group">
-              <label>{lang === 'ta' ? 'தோராய விலை (₹ Price)' : 'Est. Price (₹)'}</label>
-              <div className="price-input-wrap">
-                <span className="currency-symbol">₹</span>
-                <input
-                  type="number"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder="0.00"
-                  step="0.5"
-                  min="0"
-                />
+            <div className="form-field">
+              <div className="price-label-row">
+                <label>{lang === 'ta' ? 'தோராய விலை (₹ Price)' : 'Est. Price (₹)'}</label>
+                <button
+                  type="button"
+                  className="fetch-rate-inline-btn"
+                  onClick={handleFetchLiveRate}
+                  disabled={isFetchingRate || !name.trim()}
+                  title="Fetch live market price"
+                >
+                  <RefreshCw size={10} className={isFetchingRate ? 'spin-icon' : ''} />
+                  <span>{isFetchingRate ? '...' : '⚡ Rate'}</span>
+                </button>
               </div>
+              <input
+                type="number"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0.00"
+                step="0.5"
+                min="0"
+              />
             </div>
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
+          {/* Quantity & Unit Row */}
+          <div className="form-group-row">
+            <div className="form-field">
               <label>{lang === 'ta' ? 'அளவு (Quantity)' : 'Quantity'}</label>
               <input
                 type="text"
@@ -219,9 +275,9 @@ export default function AddItemModal({
                 placeholder="1, 500, 2..."
               />
             </div>
-            <div className="form-group">
+            <div className="form-field">
               <label>{lang === 'ta' ? 'அலகு (Unit)' : 'Unit'}</label>
-              <select value={unit} onChange={(e) => setUnit(e.target.value)}>
+              <select className="styled-select" value={unit} onChange={(e) => setUnit(e.target.value)}>
                 {UNITS.map(u => (
                   <option key={u} value={u}>{u}</option>
                 ))}
@@ -229,30 +285,33 @@ export default function AddItemModal({
             </div>
           </div>
 
-          <div className="form-group photo-section-group">
-            <label>{lang === 'ta' ? 'பொருள் புகைப்படம் (Photo)' : 'Item Photo'}</label>
-            <div className="photo-tabs">
-              <button
-                type="button"
-                className={`photo-tab-btn ${photoTab === 'presets' ? 'active' : ''}`}
-                onClick={() => setPhotoTab('presets')}
-              >
-                🖼️ Preset Gallery
-              </button>
-              <button
-                type="button"
-                className={`photo-tab-btn ${photoTab === 'upload' ? 'active' : ''}`}
-                onClick={() => { setPhotoTab('upload'); fileInputRef.current?.click(); }}
-              >
-                📷 Upload Photo
-              </button>
-              <button
-                type="button"
-                className={`photo-tab-btn ${photoTab === 'url' ? 'active' : ''}`}
-                onClick={() => setPhotoTab('url')}
-              >
-                🌐 Image URL
-              </button>
+          {/* Photo Picker Section */}
+          <div className="photo-picker-section">
+            <div className="photo-picker-header">
+              <span className="photo-section-title">{lang === 'ta' ? 'பொருள் புகைப்படம்' : 'Item Photo'}</span>
+              <div className="photo-tabs">
+                <button
+                  type="button"
+                  className={`photo-tab-btn ${photoTab === 'presets' ? 'active' : ''}`}
+                  onClick={() => setPhotoTab('presets')}
+                >
+                  🖼️ {lang === 'ta' ? 'மாதிரி' : 'Presets'}
+                </button>
+                <button
+                  type="button"
+                  className={`photo-tab-btn ${photoTab === 'upload' ? 'active' : ''}`}
+                  onClick={() => { setPhotoTab('upload'); fileInputRef.current?.click(); }}
+                >
+                  📷 {lang === 'ta' ? 'பதிவேற்று' : 'Upload'}
+                </button>
+                <button
+                  type="button"
+                  className={`photo-tab-btn ${photoTab === 'url' ? 'active' : ''}`}
+                  onClick={() => setPhotoTab('url')}
+                >
+                  🌐 URL
+                </button>
+              </div>
             </div>
 
             <input
@@ -268,54 +327,80 @@ export default function AddItemModal({
                 {PRESET_PHOTOS.map((p, idx) => (
                   <div
                     key={idx}
-                    className={`preset-thumb-card ${photoUrl === p.url ? 'selected' : ''}`}
+                    className={`preset-photo-card ${photoUrl === p.url ? 'selected' : ''}`}
                     onClick={() => {
                       setPhotoUrl(p.url);
                       setEmoji(p.emoji);
                     }}
                   >
-                    <img src={p.url} alt={p.name} />
-                    <span>{p.emoji} {p.name}</span>
+                    <img src={p.url} alt={p.name} className="preset-thumb" loading="lazy" />
+                    <span className="preset-name">{p.emoji} {p.name.split('/')[0]}</span>
+                    {photoUrl === p.url && (
+                      <div className="preset-check">
+                        <Check size={11} strokeWidth={3} />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
 
+            {photoTab === 'upload' && (
+              <div className="upload-box-area">
+                <button
+                  type="button"
+                  className="upload-trigger-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={22} className="camera-icon-pulse" />
+                  <strong>{lang === 'ta' ? 'புகைப்படம் தேர்ந்தெடுக்கவும்' : 'Tap to Upload Photo'}</strong>
+                  <span>{lang === 'ta' ? 'கேமரா அல்லது கேலரி' : 'Camera or Gallery'}</span>
+                </button>
+              </div>
+            )}
+
             {photoTab === 'url' && (
-              <input
-                type="url"
-                value={photoUrl}
-                onChange={(e) => setPhotoUrl(e.target.value)}
-                placeholder="https://example.com/image.jpg"
-                className="url-input-field"
-              />
+              <div className="form-field" style={{ marginTop: '6px' }}>
+                <input
+                  type="url"
+                  value={photoUrl}
+                  onChange={(e) => setPhotoUrl(e.target.value)}
+                  placeholder="https://images.unsplash.com/..."
+                />
+              </div>
             )}
 
             {photoUrl && (
-              <div className="selected-photo-preview">
-                <img src={photoUrl} alt="Preview" />
-                <span>Selected Photo</span>
+              <div className="chosen-photo-preview-box">
+                <img src={photoUrl} alt="Preview" className="preview-img" />
+                <div className="preview-info">
+                  <span className="preview-badge">✓ {lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட படம்' : 'Photo Selected'}</span>
+                  <span className="preview-sub-hint">{emoji} {name || 'Item'}</span>
+                </div>
               </div>
             )}
           </div>
 
-          <div className="form-group">
-            <label>{lang === 'ta' ? 'குறிப்புகள் (Notes)' : 'Notes / Brand'}</label>
+          {/* Notes */}
+          <div className="form-field">
+            <label>{lang === 'ta' ? 'குறிப்புகள் (Notes / Brand)' : 'Notes / Brand'}</label>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Aashirvaad brand, fresh green..."
+              placeholder="e.g. Aashirvaad, Fresh, 2 packets..."
             />
           </div>
 
-          <div className="modal-footer-actions">
+          {/* Modal Actions */}
+          <div className="modal-actions">
             <button type="button" className="btn-cancel" onClick={onClose}>
               {lang === 'ta' ? 'ரத்து செய்' : 'Cancel'}
             </button>
-            <button type="submit" className="btn-save-primary">
-              <Check size={16} />
-              <span>{editItem ? (lang === 'ta' ? 'புதுப்பி' : 'Update Item') : (lang === 'ta' ? 'பட்டியலில் சேர்' : 'Add to List')}</span>
+            <button type="submit" className="btn-save">
+              {editItem
+                ? (lang === 'ta' ? 'புதுப்பி' : 'Update Item')
+                : (lang === 'ta' ? 'பட்டியலில் சேர்' : 'Add to List')}
             </button>
           </div>
         </form>
