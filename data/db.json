@@ -1,0 +1,101 @@
+{
+  "users": [
+    {
+      "id": "usr-1",
+      "username": "appa",
+      "password": "123",
+      "name": "அப்பா (Appa)",
+      "householdId": "hh-sync-101",
+      "createdAt": "2026-11-20T15:59:15.560Z"
+    },
+    {
+      "id": "usr-2",
+      "username": "amma",
+      "password": "123",
+      "name": "அம்மா (Amma)",
+      "householdId": "hh-sync-101",
+      "createdAt": "2026-11-20T15:59:15.561Z"
+    }
+  ],
+  "households": [
+    {
+      "id": "hh-sync-101",
+      "code": "SYNC-101",
+      "name": "நமது குடும்பம் (Our Family)",
+      "items": [
+        {
+          "id": "item-1",
+          "name": "Tomato",
+          "tamilName": "தக்காளி",
+          "category": "vegetables",
+          "quantity": "1",
+          "unit": "kg",
+          "price": 40,
+          "purchased": false,
+          "purchasedAt": null,
+          "photoUrl": "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=400&auto=format&fit=crop&q=80",
+          "emoji": "🍅",
+          "notes": "நாட்டு தக்காளி வாங்கவும்"
+        },
+        {
+          "id": "item-2",
+          "name": "Onion",
+          "tamilName": "வெங்காயம்",
+          "category": "vegetables",
+          "quantity": "2",
+          "unit": "kg",
+          "price": 60,
+          "purchased": false,
+          "purchasedAt": null,
+          "photoUrl": "https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?w=400&auto=format&fit=crop&q=80",
+          "emoji": "🧅",
+          "notes": "பெரிய வெங்காயம்"
+        },
+        {
+          "id": "item-3",
+          "name": "Fresh Milk",
+          "tamilName": "பசும்பால்",
+          "category": "dairy",
+          "quantity": "1",
+          "unit": "L",
+          "price": 28,
+          "purchased": false,
+          "purchasedAt": null,
+          "photoUrl": "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=400&auto=format&fit=crop&q=80",
+          "emoji": "🥛",
+          "notes": "ஆவின் நீல நிற பாக்கெட்"
+        },
+        {
+          "id": "item-4",
+          "name": "Apples",
+          "tamilName": "ஆப்பிள்",
+          "category": "fruits",
+          "quantity": "1",
+          "unit": "kg",
+          "price": 180,
+          "purchased": true,
+          "purchasedAt": "2026-11-20T10:30:00Z",
+          "photoUrl": "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&auto=format&fit=crop&q=80",
+          "emoji": "🍎",
+          "notes": "சிம்லா ஆப்பிள்"
+        },
+        {
+          "id": "item-5",
+          "name": "Ponni Boiled Rice",
+          "tamilName": "பொன்னி அரிசி",
+          "category": "staples",
+          "quantity": "5",
+          "unit": "kg",
+          "price": 320,
+          "purchased": false,
+          "purchasedAt": null,
+          "photoUrl": "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&auto=format&fit=crop&q=80",
+          "emoji": "🍚",
+          "notes": "முதல் தரம்"
+        }
+      ],
+      "deletedBackup": [],
+      "createdAt": "2026-11-20T15:59:15.561Z"
+    }
+  ]
+}
