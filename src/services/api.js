@@ -2,8 +2,8 @@
 import { Capacitor } from '@capacitor/core';
 import { INITIAL_GROCERIES } from '../data/initialGroceries';
 
-// Network Backend IP (Host Machine IP on Wi-Fi)
-const DEFAULT_HOST = '192.168.31.215:5000';
+// Online Cloud Backend URL (Render Cloud Server)
+const DEFAULT_HOST = 'https://smart-grocery-9tzc.onrender.com';
 
 export function isNativePlatform() {
   try {
@@ -33,7 +33,13 @@ export function getServerUrl() {
 export function getWsUrl() {
   const server = getServerUrl();
   if (server) {
-    return server.replace(/^http/, 'ws') + '/ws';
+    if (server.startsWith('https://')) {
+      return server.replace(/^https:\/\//, 'wss://') + '/ws';
+    }
+    if (server.startsWith('http://')) {
+      return server.replace(/^http:\/\//, 'ws://') + '/ws';
+    }
+    return `ws://${server}/ws`;
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/ws`;
