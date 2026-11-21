@@ -8,7 +8,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import os from 'os';
 import QRCode from 'qrcode';
+import pg from 'pg';
 
+const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -25,6 +27,19 @@ const DB_PATH = path.join(DATA_DIR, 'db.json');
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// PostgreSQL Connection
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://smart_grocery_db_6dmi_user:q36IlpZdzqehfEfmIxeUxa6cKWTLMnxB@dpg-dc0hmuc0916s73bp6j0g-a/smart_grocery_db_6dmi';
+
+let pool = null;
+let usePostgres = false;
+
+if (DATABASE_URL) {
+  pool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: DATABASE_URL.includes('dpg-') && !DATABASE_URL.includes('.render.com') ? false : { rejectUnauthorized: false }
+  });
 }
 
 // Initial sample groceries for new households
@@ -101,7 +116,43 @@ const DEFAULT_GROCERIES = [
   }
 ];
 
-// Load Database
+// Initialize PostgreSQL Tables
+async function initDB() {
+  if (!pool) return;
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS households (
+          id TEXT PRIMARY KEY,
+          code TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          items JSONB NOT NULL DEFAULT '[]'::jsonb,
+          deleted_backup JSONB NOT NULL DEFAULT '[]'::jsonb,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          username TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          name TEXT NOT NULL,
+          household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `);
+      usePostgres = true;
+      console.log('✅ PostgreSQL connected & tables verified!');
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.warn('⚠️ Could not connect to PostgreSQL (using local JSON DB):', err.message);
+    usePostgres = false;
+  }
+}
+
+// Fallback JSON File Database
 function loadDB() {
   if (fs.existsSync(DB_PATH)) {
     try {
@@ -112,26 +163,8 @@ function loadDB() {
     }
   }
 
-  // Initial Seed
   const initialData = {
-    users: [
-      {
-        id: 'usr-1',
-        username: 'appa',
-        password: '123',
-        name: 'அப்பா (Appa)',
-        householdId: 'hh-sync-101',
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 'usr-2',
-        username: 'amma',
-        password: '123',
-        name: 'அம்மா (Amma)',
-        householdId: 'hh-sync-101',
-        createdAt: new Date().toISOString()
-      }
-    ],
+    users: [],
     households: [
       {
         id: 'hh-sync-101',
@@ -156,7 +189,130 @@ function saveDB(dbData) {
   }
 }
 
-let db = loadDB();
+// Unified Database Helpers
+async function dbFindUser(username) {
+  const clean = username.trim().toLowerCase();
+  if (usePostgres) {
+    const res = await pool.query('SELECT * FROM users WHERE LOWER(username) = $1', [clean]);
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0];
+    return { id: row.id, username: row.username, password: row.password, name: row.name, householdId: row.household_id };
+  }
+  const dbData = loadDB();
+  return dbData.users.find(u => u.username.toLowerCase() === clean) || null;
+}
+
+async function dbFindUserForLogin(username, password) {
+  const clean = username.trim().toLowerCase();
+  if (usePostgres) {
+    const res = await pool.query('SELECT * FROM users WHERE LOWER(username) = $1 AND password = $2', [clean, password]);
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0];
+    return { id: row.id, username: row.username, password: row.password, name: row.name, householdId: row.household_id };
+  }
+  const dbData = loadDB();
+  return dbData.users.find(u => u.username.toLowerCase() === clean && u.password === password) || null;
+}
+
+async function dbCreateUser(user) {
+  if (usePostgres) {
+    await pool.query(
+      'INSERT INTO users (id, username, password, name, household_id) VALUES ($1, $2, $3, $4, $5)',
+      [user.id, user.username.toLowerCase(), user.password, user.name, user.householdId]
+    );
+    return;
+  }
+  const dbData = loadDB();
+  dbData.users.push(user);
+  saveDB(dbData);
+}
+
+async function dbUpdateUserPassword(username, newPassword) {
+  const clean = username.trim().toLowerCase();
+  if (usePostgres) {
+    const res = await pool.query('UPDATE users SET password = $2 WHERE LOWER(username) = $1 RETURNING *', [clean, newPassword]);
+    return res.rows.length > 0;
+  }
+  const dbData = loadDB();
+  const idx = dbData.users.findIndex(u => u.username.toLowerCase() === clean);
+  if (idx === -1) return false;
+  dbData.users[idx].password = newPassword;
+  saveDB(dbData);
+  return true;
+}
+
+async function dbUpdateUserHousehold(userId, householdId) {
+  if (usePostgres) {
+    await pool.query('UPDATE users SET household_id = $2 WHERE id = $1', [userId, householdId]);
+    return;
+  }
+  const dbData = loadDB();
+  const user = dbData.users.find(u => u.id === userId);
+  if (user) {
+    user.householdId = householdId;
+    saveDB(dbData);
+  }
+}
+
+async function dbFindHouseholdById(id) {
+  if (usePostgres) {
+    const res = await pool.query('SELECT * FROM households WHERE id = $1', [id]);
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0];
+    return { id: row.id, code: row.code, name: row.name, items: row.items || [], deletedBackup: row.deleted_backup || [] };
+  }
+  const dbData = loadDB();
+  return dbData.households.find(h => h.id === id) || null;
+}
+
+async function dbFindHouseholdByCode(code) {
+  const clean = code.trim().toUpperCase();
+  if (usePostgres) {
+    const res = await pool.query('SELECT * FROM households WHERE UPPER(code) = $1', [clean]);
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0];
+    return { id: row.id, code: row.code, name: row.name, items: row.items || [], deletedBackup: row.deleted_backup || [] };
+  }
+  const dbData = loadDB();
+  return dbData.households.find(h => h.code.toUpperCase() === clean) || null;
+}
+
+async function dbCreateHousehold(household) {
+  if (usePostgres) {
+    await pool.query(
+      'INSERT INTO households (id, code, name, items, deleted_backup) VALUES ($1, $2, $3, $4, $5)',
+      [household.id, household.code, household.name, JSON.stringify(household.items || []), JSON.stringify(household.deletedBackup || [])]
+    );
+    return;
+  }
+  const dbData = loadDB();
+  dbData.households.push(household);
+  saveDB(dbData);
+}
+
+async function dbSaveHouseholdItems(householdId, items, deletedBackup = null) {
+  if (usePostgres) {
+    if (deletedBackup !== null) {
+      await pool.query(
+        'UPDATE households SET items = $2, deleted_backup = $3 WHERE id = $1',
+        [householdId, JSON.stringify(items), JSON.stringify(deletedBackup)]
+      );
+    } else {
+      await pool.query(
+        'UPDATE households SET items = $2 WHERE id = $1',
+        [householdId, JSON.stringify(items)]
+      );
+    }
+    return;
+  }
+  const dbData = loadDB();
+  const household = dbData.households.find(h => h.id === householdId);
+  if (household) {
+    household.items = items;
+    if (deletedBackup !== null) household.deletedBackup = deletedBackup;
+    saveDB(dbData);
+  }
+}
 
 // Helper to get local Wi-Fi IP address
 function getLocalIP() {
@@ -171,49 +327,25 @@ function getLocalIP() {
   return 'localhost';
 }
 
-// Generate clean 6-7 character Household Sync Code (e.g. FAM-4821 or APPA-7215)
-function generateHouseholdCode(name = 'HOME') {
-  const letters = name.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase();
-  const prefix = letters && letters.length >= 2 ? letters : 'FAM';
-  const randomNum = Math.floor(1000 + Math.random() * 9000);
-  return `${prefix}-${randomNum}`;
+// Helper to generate unique 6-character Family Sync Code
+function generateHouseholdCode(familyName = 'FAMILY') {
+  const prefix = familyName.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, '') || 'FAM';
+  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+  return `${prefix}-${randomSuffix}`;
 }
 
-// Connected WebSocket Clients map: householdId -> Set<clientObj>
+// Connected WebSocket Clients grouped by householdId
 const roomClients = new Map();
 
-function broadcastToHousehold(householdId, payload, excludeWs = null) {
+// Helper to broadcast event to all devices in a household
+function broadcastToHousehold(householdId, messageObj) {
   const clients = roomClients.get(householdId);
-  if (!clients) return;
+  if (!clients || clients.size === 0) return;
 
-  const msg = JSON.stringify(payload);
+  const payload = JSON.stringify(messageObj);
   clients.forEach(client => {
-    if (client.ws !== excludeWs && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(msg);
-    }
-  });
-}
-
-function broadcastOnlinePeers(householdId) {
-  const clients = roomClients.get(householdId);
-  if (!clients) return;
-
-  const peers = Array.from(clients).map(c => ({
-    userId: c.userId,
-    name: c.name,
-    deviceName: c.deviceName,
-    joinedAt: c.joinedAt
-  }));
-
-  const msg = JSON.stringify({
-    type: 'PEERS_UPDATED',
-    peers,
-    count: peers.length
-  });
-
-  clients.forEach(c => {
-    if (c.ws.readyState === WebSocket.OPEN) {
-      c.ws.send(msg);
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(payload);
     }
   });
 }
@@ -245,197 +377,176 @@ wss.on('connection', (ws) => {
         // Notify client of successful join
         ws.send(JSON.stringify({
           type: 'JOINED_SUCCESS',
-          householdId
+          householdId,
+          connectedCount: roomClients.get(householdId).size
         }));
 
-        // Broadcast active devices to everyone in this household
-        broadcastOnlinePeers(householdId);
+        // Broadcast peer update to everyone in this household
+        const activePeers = Array.from(roomClients.get(householdId)).map(c => ({
+          userId: c.userId,
+          name: c.name,
+          deviceName: c.deviceName
+        }));
+
+        broadcastToHousehold(householdId, {
+          type: 'PEERS_UPDATED',
+          peers: activePeers
+        });
       }
-    } catch (e) {
-      console.error('WS Message error', e);
+    } catch (err) {
+      console.error('WebSocket message parsing error', err);
     }
   });
 
   ws.on('close', () => {
     if (clientInfo && roomClients.has(clientInfo.householdId)) {
-      const clients = roomClients.get(clientInfo.householdId);
-      clients.delete(clientInfo);
-      if (clients.size === 0) {
+      const householdSet = roomClients.get(clientInfo.householdId);
+      householdSet.delete(clientInfo);
+
+      if (householdSet.size === 0) {
         roomClients.delete(clientInfo.householdId);
       } else {
-        broadcastOnlinePeers(clientInfo.householdId);
+        const activePeers = Array.from(householdSet).map(c => ({
+          userId: c.userId,
+          name: c.name,
+          deviceName: c.deviceName
+        }));
+
+        broadcastToHousehold(clientInfo.householdId, {
+          type: 'PEERS_UPDATED',
+          peers: activePeers
+        });
       }
     }
   });
 });
 
-/* ============================================================
-   REST API ROUTES
-============================================================ */
-
-// Serve static production build if exists
+// Serve frontend static assets in production
 const DIST_PATH = path.join(__dirname, 'dist');
 if (fs.existsSync(DIST_PATH)) {
   app.use(express.static(DIST_PATH));
 }
 
-// 1. Network Info & QR Code for 2nd Mobile Sync
+// -------------------------------------------------------------
+// REST API ENDPOINTS
+// -------------------------------------------------------------
+
+// 1. Get Network & Sync Pairing Info
 app.get('/api/network-info', async (req, res) => {
   const ip = getLocalIP();
+  const port = process.env.PORT || 5000;
   const vitePort = 5173;
   const mobileUrl = `http://${ip}:${vitePort}/`;
 
-  let qrCodeDataUrl = '';
   try {
-    qrCodeDataUrl = await QRCode.toDataURL(mobileUrl, {
-      width: 260,
-      margin: 1.5,
+    const qrDataUrl = await QRCode.toDataURL(mobileUrl, {
+      width: 250,
+      margin: 2,
       color: {
         dark: '#059669',
         light: '#ffffff'
       }
     });
-  } catch (err) {
-    console.error('Error generating QR code', err);
-  }
 
-  res.json({
-    ip,
-    port: 5000,
-    vitePort,
-    mobileUrl,
-    publicUrl: process.env.PUBLIC_URL || null,
-    qrCodeDataUrl
-  });
+    res.json({
+      ip,
+      port: 5000,
+      vitePort,
+      mobileUrl,
+      qrDataUrl
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to generate QR code' });
+  }
 });
 
-// Market Price Database (Tamil Nadu Daily Commodity & Supermarket Rates)
-const LIVE_MARKET_RATES = {
-  // Medicines & Healthcare
-  'dolo': { rate: 32, unit: 'strip', market: 'Pharmacy Retail MRP' },
-  'dolo 650': { rate: 32, unit: 'strip', market: 'Pharmacy Retail MRP' },
-  'paracetamol': { rate: 20, unit: 'strip', market: 'Pharmacy Retail MRP' },
-  'டோலோ': { rate: 32, unit: 'strip', market: 'Pharmacy Retail MRP' },
-  'பாராசிட்டமால்': { rate: 20, unit: 'strip', market: 'Pharmacy Retail MRP' },
-  'vicks': { rate: 55, unit: 'bottle', market: 'Pharmacy Retail MRP' },
-  'விக்ஸ்': { rate: 55, unit: 'bottle', market: 'Pharmacy Retail MRP' },
-  'cough syrup': { rate: 110, unit: 'bottle', market: 'Pharmacy Retail MRP' },
-  'இருமல் மருந்து': { rate: 110, unit: 'bottle', market: 'Pharmacy Retail MRP' },
-  'band-aid': { rate: 25, unit: 'pack', market: 'Pharmacy Retail MRP' },
-  'band aid': { rate: 25, unit: 'pack', market: 'Pharmacy Retail MRP' },
-  'பேன்ட்-எய்ட்': { rate: 25, unit: 'pack', market: 'Pharmacy Retail MRP' },
-  'moov': { rate: 145, unit: 'tube', market: 'Pharmacy Retail MRP' },
-  'மூவ்': { rate: 145, unit: 'tube', market: 'Pharmacy Retail MRP' },
-  'amrutanjan': { rate: 48, unit: 'bottle', market: 'Pharmacy Retail MRP' },
-  'அமிர்தாஞ்சன்': { rate: 48, unit: 'bottle', market: 'Pharmacy Retail MRP' },
-  'eno': { rate: 10, unit: 'pack', market: 'Pharmacy Retail MRP' },
-  'ஈனோ': { rate: 10, unit: 'pack', market: 'Pharmacy Retail MRP' },
-
-  // Groceries & Produce
-  'tomato': { rate: 38, unit: 'kg', market: 'Koyambedu / TN Retail Index' },
-  'thakkali': { rate: 38, unit: 'kg', market: 'Koyambedu / TN Retail Index' },
-  'தக்காளி': { rate: 38, unit: 'kg', market: 'Koyambedu / TN Retail Index' },
-  'onion': { rate: 55, unit: 'kg', market: 'TN Agriculture Market' },
-  'vengayam': { rate: 55, unit: 'kg', market: 'TN Agriculture Market' },
-  'வெங்காயம்': { rate: 55, unit: 'kg', market: 'TN Agriculture Market' },
-  'potato': { rate: 35, unit: 'kg', market: 'Koyambedu Wholesale' },
-  'உருளைக்கிழங்கு': { rate: 35, unit: 'kg', market: 'Koyambedu Wholesale' },
-  'carrot': { rate: 60, unit: 'kg', market: 'Ooty Produce Index' },
-  'கேரட்': { rate: 60, unit: 'kg', market: 'Ooty Produce Index' },
-  'milk': { rate: 28, unit: 'L', market: 'Aavin Official Retail Price' },
-  'பசும்பால்': { rate: 28, unit: 'L', market: 'Aavin Official Retail Price' },
-  'பால்': { rate: 28, unit: 'L', market: 'Aavin Official Retail Price' },
-  'apple': { rate: 180, unit: 'kg', market: 'Shimla Apple Daily Index' },
-  'ஆப்பிள்': { rate: 180, unit: 'kg', market: 'Shimla Apple Daily Index' },
-  'banana': { rate: 60, unit: 'dozen', market: 'Trichy Banana Market' },
-  'வாழைப்பழம்': { rate: 60, unit: 'dozen', market: 'Trichy Banana Market' },
-  'egg': { rate: 6, unit: 'pcs', market: 'NECC Namakkal Egg Rate' },
-  'eggs': { rate: 6, unit: 'pcs', market: 'NECC Namakkal Egg Rate' },
-  'முட்டை': { rate: 6, unit: 'pcs', market: 'NECC Namakkal Egg Rate' },
-  'rice': { rate: 64, unit: 'kg', market: 'Ponni Rice Mill Price' },
-  'அரிசி': { rate: 64, unit: 'kg', market: 'Ponni Rice Mill Price' },
-  'பொன்னி அரிசி': { rate: 64, unit: 'kg', market: 'Ponni Rice Mill Price' },
-  'oil': { rate: 185, unit: 'L', market: 'TN Edible Oil Board' },
-  'எண்ணெய்': { rate: 185, unit: 'L', market: 'TN Edible Oil Board' },
-  'கடலை எண்ணெய்': { rate: 185, unit: 'L', market: 'TN Edible Oil Board' },
-  'bread': { rate: 45, unit: 'pack', market: 'Bakery Association Price' },
-  'பிரெட்': { rate: 45, unit: 'pack', market: 'Bakery Association Price' },
-  'coffee': { rate: 160, unit: 'pack', market: 'Coffee Board Index' },
-  'காபி தூள்': { rate: 160, unit: 'pack', market: 'Coffee Board Index' },
-  'garlic': { rate: 240, unit: 'kg', market: 'Koyambedu Wholesale' },
-  'பூண்டு': { rate: 240, unit: 'kg', market: 'Koyambedu Wholesale' },
-  'ginger': { rate: 140, unit: 'kg', market: 'Koyambedu Wholesale' },
-  'இஞ்சி': { rate: 140, unit: 'kg', market: 'Koyambedu Wholesale' },
-  'coconut': { rate: 35, unit: 'pcs', market: 'Pollachi Coconut Board' },
-  'தேங்காய்': { rate: 35, unit: 'pcs', market: 'Pollachi Coconut Board' }
+// Tamil Nadu Daily Market Rates Database
+const MARKET_PRICES = {
+  'Tomato': { currentPrice: 38, prevPrice: 45, unit: 'kg', trend: 'down', change: '-15%', market: 'Koyambedu / உழவர் சந்தை' },
+  'Onion': { currentPrice: 55, prevPrice: 50, unit: 'kg', trend: 'up', change: '+10%', market: 'Koyambedu / உழவர் சந்தை' },
+  'Potato': { currentPrice: 32, prevPrice: 35, unit: 'kg', trend: 'down', change: '-8%', market: 'Dindigul Market' },
+  'Carrot': { currentPrice: 50, prevPrice: 55, unit: 'kg', trend: 'down', change: '-9%', market: 'Ooty / Kodaikanal' },
+  'Ladies Finger': { currentPrice: 40, prevPrice: 35, unit: 'kg', trend: 'up', change: '+14%', market: 'Local Uzhavar Sandhai' },
+  'Brinjal': { currentPrice: 35, prevPrice: 35, unit: 'kg', trend: 'stable', change: '0%', market: 'Local Market' },
+  'Cabbage': { currentPrice: 25, prevPrice: 28, unit: 'kg', trend: 'down', change: '-10%', market: 'Local Market' },
+  'Green Chilli': { currentPrice: 70, prevPrice: 60, unit: 'kg', trend: 'up', change: '+16%', market: 'Koyambedu Wholesale' },
+  'Ginger': { currentPrice: 120, prevPrice: 140, unit: 'kg', trend: 'down', change: '-14%', market: 'Kerala / Wholesale' },
+  'Garlic': { currentPrice: 240, prevPrice: 280, unit: 'kg', trend: 'down', change: '-14%', market: 'Madhya Pradesh Imports' },
+  'Coriander': { currentPrice: 15, prevPrice: 20, unit: 'bunch', trend: 'down', change: '-25%', market: 'Local Market' },
+  'Curry Leaves': { currentPrice: 10, prevPrice: 10, unit: 'bunch', trend: 'stable', change: '0%', market: 'Local Market' },
+  'Fresh Milk': { currentPrice: 28, prevPrice: 28, unit: 'L', trend: 'stable', change: '0%', market: 'Aavin Official MRP' },
+  'Curd': { currentPrice: 35, prevPrice: 35, unit: 'pkt', trend: 'stable', change: '0%', market: 'Aavin / Hatsun' },
+  'Paneer': { currentPrice: 95, prevPrice: 95, unit: 'pkt', trend: 'stable', change: '0%', market: 'Dairy MRP' },
+  'Eggs': { currentPrice: 6, prevPrice: 6.5, unit: 'piece', trend: 'down', change: '-7%', market: 'Namakkal NECC Daily Rate' },
+  'Apples': { currentPrice: 160, prevPrice: 180, unit: 'kg', trend: 'down', change: '-11%', market: 'Shimla / Kashmir' },
+  'Banana': { currentPrice: 45, prevPrice: 40, unit: 'dozen', trend: 'up', change: '+12%', market: 'Theni Market' },
+  'Ponni Boiled Rice': { currentPrice: 60, prevPrice: 58, unit: 'kg', trend: 'stable', change: '+3%', market: 'Manachanallur Mill Rate' },
+  'Toor Dal': { currentPrice: 165, prevPrice: 175, unit: 'kg', trend: 'down', change: '-5%', market: 'Wholesale Mandi' },
+  'Sunflower Oil': { currentPrice: 135, prevPrice: 140, unit: 'L', trend: 'down', change: '-3%', market: 'Refined Oil Rate' },
+  'Dolo 650': { currentPrice: 32, prevPrice: 32, unit: 'strip', trend: 'stable', change: '0%', market: 'Standard Pharmacy MRP' },
+  'Vicks Vaporub': { currentPrice: 55, prevPrice: 55, unit: 'bottle', trend: 'stable', change: '0%', market: 'Pharmacy MRP' },
+  'vegetables': { currentPrice: 45, prevPrice: 45, unit: 'kg', trend: 'stable', change: '0%', market: 'General Market' },
+  'medicines': { currentPrice: 40, prevPrice: 40, unit: 'pkt', trend: 'stable', change: '0%', market: 'Pharmacy MRP' },
+  'fruits': { currentPrice: 80, prevPrice: 80, unit: 'kg', trend: 'stable', change: '0%', market: 'Daily Fruit Market' },
+  'staples': { currentPrice: 90, prevPrice: 90, unit: 'kg', trend: 'stable', change: '0%', market: 'Grocery Wholesale' },
+  'dairy': { currentPrice: 30, prevPrice: 30, unit: 'L', trend: 'stable', change: '0%', market: 'Dairy Standard' }
 };
 
-// Auto-Fetch Online Rate API
+// Auto-suggest live market price
 app.get('/api/market-price', (req, res) => {
-  const { query, quantity, unit } = req.query;
-  if (!query) return res.status(400).json({ error: 'Query is required' });
+  const query = (req.query.q || '').trim();
+  const category = (req.query.category || '').toLowerCase();
 
-  const cleanQuery = query.toLowerCase().trim();
-  let found = null;
-
-  for (const [key, val] of Object.entries(LIVE_MARKET_RATES)) {
-    if (cleanQuery.includes(key) || key.includes(cleanQuery)) {
-      found = val;
+  let matched = null;
+  for (const [key, val] of Object.entries(MARKET_PRICES)) {
+    if (key.toLowerCase() === query.toLowerCase()) {
+      matched = { name: key, ...val };
       break;
     }
   }
 
-  const qty = parseFloat(quantity) || 1;
-  const baseRate = found ? found.rate : 50; // default estimated rate
-  const market = found ? found.market : 'TN Daily Grocery Index';
-  const totalPrice = Math.round(baseRate * qty);
+  if (!matched && query) {
+    for (const [key, val] of Object.entries(MARKET_PRICES)) {
+      if (query.toLowerCase().includes(key.toLowerCase()) || key.toLowerCase().includes(query.toLowerCase())) {
+        matched = { name: key, ...val };
+        break;
+      }
+    }
+  }
 
-  res.json({
-    success: true,
-    query,
-    baseRate,
-    quantity: qty,
-    unit: unit || found?.unit || 'kg',
-    totalPrice,
-    market,
-    timestamp: new Date().toISOString(),
-    isLive: true
-  });
+  if (!matched && category && MARKET_PRICES[category]) {
+    matched = { name: category, ...MARKET_PRICES[category] };
+  }
+
+  if (matched) {
+    res.json({ found: true, ...matched, lastUpdated: new Date().toISOString() });
+  } else {
+    res.json({ found: false, currentPrice: null });
+  }
 });
 
-// Auto-Update All Items with Today's Live Online Rates
-app.post('/api/groceries/:householdId/auto-update-rates', (req, res) => {
+// Auto-Update All Items with Latest Market Rates
+app.post('/api/groceries/:householdId/auto-update-rates', async (req, res) => {
   const { householdId } = req.params;
   const { senderUser } = req.body;
 
-  db = loadDB();
-  const household = db.households.find(h => h.id === householdId);
+  const household = await dbFindHouseholdById(householdId);
   if (!household) return res.status(404).json({ error: 'Household not found' });
 
   let updatedCount = 0;
-  household.items = household.items.map(item => {
-    const qName = (item.tamilName + ' ' + item.name).toLowerCase();
-    for (const [key, val] of Object.entries(LIVE_MARKET_RATES)) {
-      if (qName.includes(key)) {
-        const qty = parseFloat(item.quantity) || 1;
-        const newPrice = Math.round(val.rate * qty);
-        if (newPrice !== item.price) {
-          updatedCount++;
-          return {
-            ...item,
-            price: newPrice,
-            marketSource: val.market,
-            rateFetchedAt: new Date().toISOString()
-          };
-        }
-      }
+  household.items.forEach(item => {
+    const market = MARKET_PRICES[item.name] || MARKET_PRICES[item.category];
+    if (market && item.price !== market.currentPrice) {
+      item.price = market.currentPrice;
+      item.lastPriceUpdate = new Date().toISOString();
+      updatedCount++;
     }
-    return item;
   });
 
-  saveDB(db);
+  if (updatedCount > 0) {
+    await dbSaveHouseholdItems(householdId, household.items);
+  }
 
-  // Broadcast to other devices
   broadcastToHousehold(householdId, {
     type: 'RATES_UPDATED',
     items: household.items,
@@ -447,7 +558,7 @@ app.post('/api/groceries/:householdId/auto-update-rates', (req, res) => {
 });
 
 // 2. User Registration (பதிவு செய்க)
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   const { username, password, name, householdChoice, existingCode, newHouseholdName } = req.body;
 
   if (!username || !password || !name) {
@@ -455,10 +566,10 @@ app.post('/api/auth/register', (req, res) => {
   }
 
   const cleanUsername = username.trim().toLowerCase();
-  db = loadDB();
 
   // Check if username already exists
-  if (db.users.some(u => u.username.toLowerCase() === cleanUsername)) {
+  const existingUser = await dbFindUser(cleanUsername);
+  if (existingUser) {
     return res.status(400).json({ error: 'Username already taken. Please choose another or login.' });
   }
 
@@ -466,7 +577,7 @@ app.post('/api/auth/register', (req, res) => {
 
   if (householdChoice === 'join' && existingCode) {
     const codeClean = existingCode.trim().toUpperCase();
-    targetHousehold = db.households.find(h => h.code.toUpperCase() === codeClean);
+    targetHousehold = await dbFindHouseholdByCode(codeClean);
     if (!targetHousehold) {
       return res.status(404).json({ error: `Household sync code "${existingCode}" not found. Please verify the code from mobile 1.` });
     }
@@ -479,10 +590,9 @@ app.post('/api/auth/register', (req, res) => {
       code: hCode,
       name: hName,
       items: DEFAULT_GROCERIES,
-      deletedBackup: [],
-      createdAt: new Date().toISOString()
+      deletedBackup: []
     };
-    db.households.push(targetHousehold);
+    await dbCreateHousehold(targetHousehold);
   }
 
   const newUser = {
@@ -490,14 +600,12 @@ app.post('/api/auth/register', (req, res) => {
     username: cleanUsername,
     password,
     name: name.trim(),
-    householdId: targetHousehold.id,
-    createdAt: new Date().toISOString()
+    householdId: targetHousehold.id
   };
 
-  db.users.push(newUser);
-  saveDB(db);
+  await dbCreateUser(newUser);
 
-  // If joined an existing household, broadcast live alert to Father/other members!
+  // If joined an existing household, broadcast live alert to other members!
   if (householdChoice === 'join' && targetHousehold) {
     broadcastToHousehold(targetHousehold.id, {
       type: 'MEMBER_JOINED',
@@ -523,22 +631,19 @@ app.post('/api/auth/register', (req, res) => {
 });
 
 // 3. User Login (உள்நுழைக)
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password required' });
   }
 
-  const cleanUsername = username.trim().toLowerCase();
-  db = loadDB();
-
-  const user = db.users.find(u => u.username.toLowerCase() === cleanUsername && u.password === password);
+  const user = await dbFindUserForLogin(username, password);
   if (!user) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
 
-  const household = db.households.find(h => h.id === user.householdId) || db.households[0];
+  const household = await dbFindHouseholdById(user.householdId);
 
   res.json({
     user: {
@@ -547,35 +652,33 @@ app.post('/api/auth/login', (req, res) => {
       username: user.username,
       householdId: user.householdId
     },
-    household: {
+    household: household ? {
       id: household.id,
       code: household.code,
       name: household.name
+    } : {
+      id: 'hh-sync-101',
+      code: 'SYNC-101',
+      name: 'Our Family'
     },
-    items: household.items
+    items: household ? (household.items || []) : DEFAULT_GROCERIES
   });
 });
 
 // 3b. Forgot / Reset Password (கடவுச்சொல் மீட்டெடு)
-app.post('/api/auth/forgot-password', (req, res) => {
+app.post('/api/auth/forgot-password', async (req, res) => {
   const { username, newPassword } = req.body;
 
   if (!username || !newPassword) {
     return res.status(400).json({ error: 'Username/Mobile and new password are required' });
   }
 
-  const cleanUsername = username.trim().toLowerCase();
-  db = loadDB();
-
-  const userIndex = db.users.findIndex(u => u.username.toLowerCase() === cleanUsername);
-  if (userIndex === -1) {
+  const updated = await dbUpdateUserPassword(username, newPassword);
+  if (!updated) {
     return res.status(404).json({
       error: 'பயனர் பெயர் அல்லது மொபைல் எண் பதிவு செய்யப்படவில்லை (User not found)'
     });
   }
-
-  db.users[userIndex].password = newPassword;
-  saveDB(db);
 
   res.json({
     success: true,
@@ -584,26 +687,19 @@ app.post('/api/auth/forgot-password', (req, res) => {
 });
 
 // 4. Join / Switch Household using Sync Code
-app.post('/api/auth/join-household', (req, res) => {
+app.post('/api/auth/join-household', async (req, res) => {
   const { userId, code } = req.body;
   if (!code) {
     return res.status(400).json({ error: 'Sync code is required' });
   }
 
-  db = loadDB();
-  const cleanCode = code.trim().toUpperCase();
-  const household = db.households.find(h => h.code.toUpperCase() === cleanCode);
-
+  const household = await dbFindHouseholdByCode(code);
   if (!household) {
     return res.status(404).json({ error: `Sync code "${code}" not found. Check the code on the first mobile.` });
   }
 
   if (userId) {
-    const user = db.users.find(u => u.id === userId);
-    if (user) {
-      user.householdId = household.id;
-      saveDB(db);
-    }
+    await dbUpdateUserHousehold(userId, household.id);
   }
 
   res.json({
@@ -612,14 +708,13 @@ app.post('/api/auth/join-household', (req, res) => {
       code: household.code,
       name: household.name
     },
-    items: household.items
+    items: household.items || []
   });
 });
 
 // 5. Get Groceries for Household
-app.get('/api/groceries/:householdId', (req, res) => {
-  db = loadDB();
-  const household = db.households.find(h => h.id === req.params.householdId);
+app.get('/api/groceries/:householdId', async (req, res) => {
+  const household = await dbFindHouseholdById(req.params.householdId);
   if (!household) {
     return res.status(404).json({ error: 'Household not found' });
   }
@@ -634,12 +729,11 @@ app.get('/api/groceries/:householdId', (req, res) => {
 });
 
 // 6. Add / Update Grocery Item (Syncs to all mobiles)
-app.post('/api/groceries/:householdId', (req, res) => {
+app.post('/api/groceries/:householdId', async (req, res) => {
   const { householdId } = req.params;
   const { item, senderUser, deviceName } = req.body;
 
-  db = loadDB();
-  const household = db.households.find(h => h.id === householdId);
+  const household = await dbFindHouseholdById(householdId);
   if (!household) return res.status(404).json({ error: 'Household not found' });
 
   const existingIndex = household.items.findIndex(i => i.id === item.id);
@@ -649,9 +743,8 @@ app.post('/api/groceries/:householdId', (req, res) => {
     household.items.unshift(item);
   }
 
-  saveDB(db);
+  await dbSaveHouseholdItems(householdId, household.items);
 
-  // Real-time broadcast to all connected mobiles in this household!
   broadcastToHousehold(householdId, {
     type: 'ITEM_UPDATED',
     action: existingIndex >= 0 ? 'UPDATE' : 'ADD',
@@ -665,12 +758,11 @@ app.post('/api/groceries/:householdId', (req, res) => {
 });
 
 // 7. Toggle Item Purchase Checkbox (Syncs in real-time)
-app.post('/api/groceries/:householdId/toggle', (req, res) => {
+app.post('/api/groceries/:householdId/toggle', async (req, res) => {
   const { householdId } = req.params;
   const { itemId, senderUser, deviceName } = req.body;
 
-  db = loadDB();
-  const household = db.households.find(h => h.id === householdId);
+  const household = await dbFindHouseholdById(householdId);
   if (!household) return res.status(404).json({ error: 'Household not found' });
 
   const target = household.items.find(i => i.id === itemId);
@@ -679,9 +771,8 @@ app.post('/api/groceries/:householdId/toggle', (req, res) => {
   target.purchased = !target.purchased;
   target.purchasedAt = target.purchased ? new Date().toISOString() : null;
 
-  saveDB(db);
+  await dbSaveHouseholdItems(householdId, household.items);
 
-  // Broadcast toggle event to other phone
   broadcastToHousehold(householdId, {
     type: 'ITEM_TOGGLED',
     itemId,
@@ -696,78 +787,73 @@ app.post('/api/groceries/:householdId/toggle', (req, res) => {
 });
 
 // 8. Delete Purchased Items (Syncs in real-time across both phones)
-app.post('/api/groceries/:householdId/delete-purchased', (req, res) => {
+app.post('/api/groceries/:householdId/delete-purchased', async (req, res) => {
   const { householdId } = req.params;
   const { senderUser, deviceName } = req.body;
 
-  db = loadDB();
-  const household = db.households.find(h => h.id === householdId);
+  const household = await dbFindHouseholdById(householdId);
   if (!household) return res.status(404).json({ error: 'Household not found' });
 
   const purchased = household.items.filter(i => i.purchased);
-  household.deletedBackup = purchased;
-  household.items = household.items.filter(i => !i.purchased);
+  const remaining = household.items.filter(i => !i.purchased);
 
-  saveDB(db);
+  await dbSaveHouseholdItems(householdId, remaining, purchased);
 
-  // Broadcast to other phone
   broadcastToHousehold(householdId, {
     type: 'PURCHASED_DELETED',
     count: purchased.length,
-    items: household.items,
+    items: remaining,
     sender: senderUser?.name || 'A family member',
     deviceName: deviceName || 'Mobile'
   });
 
-  res.json({ success: true, count: purchased.length, items: household.items });
+  res.json({ success: true, count: purchased.length, items: remaining });
 });
 
 // 9. Delete Single Item
-app.delete('/api/groceries/:householdId/:itemId', (req, res) => {
+app.delete('/api/groceries/:householdId/:itemId', async (req, res) => {
   const { householdId, itemId } = req.params;
   const { senderName, deviceName } = req.query;
 
-  db = loadDB();
-  const household = db.households.find(h => h.id === householdId);
+  const household = await dbFindHouseholdById(householdId);
   if (!household) return res.status(404).json({ error: 'Household not found' });
 
   const target = household.items.find(i => i.id === itemId);
-  household.items = household.items.filter(i => i.id !== itemId);
+  const remaining = household.items.filter(i => i.id !== itemId);
+  const deletedBackup = target ? [target] : [];
 
-  saveDB(db);
+  await dbSaveHouseholdItems(householdId, remaining, deletedBackup);
 
   broadcastToHousehold(householdId, {
     type: 'ITEM_DELETED',
     itemId,
     itemName: target?.tamilName || target?.name || 'Item',
-    items: household.items,
+    items: remaining,
     sender: senderName || 'A family member',
     deviceName: deviceName || 'Mobile'
   });
 
-  res.json({ success: true, items: household.items });
+  res.json({ success: true, items: remaining });
 });
 
 // 10. Undo Delete
-app.post('/api/groceries/:householdId/undo', (req, res) => {
+app.post('/api/groceries/:householdId/undo', async (req, res) => {
   const { householdId } = req.params;
 
-  db = loadDB();
-  const household = db.households.find(h => h.id === householdId);
+  const household = await dbFindHouseholdById(householdId);
   if (!household || !household.deletedBackup || household.deletedBackup.length === 0) {
     return res.status(400).json({ error: 'No items to restore' });
   }
 
-  household.items = [...household.items, ...household.deletedBackup];
-  household.deletedBackup = [];
-  saveDB(db);
+  const restored = [...household.items, ...household.deletedBackup];
+  await dbSaveHouseholdItems(householdId, restored, []);
 
   broadcastToHousehold(householdId, {
     type: 'ITEMS_RESTORED',
-    items: household.items
+    items: restored
   });
 
-  res.json({ success: true, items: household.items });
+  res.json({ success: true, items: restored });
 });
 
 // SPA Fallback: serve index.html for any other non-API routes
@@ -781,7 +867,8 @@ app.use((req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', async () => {
+  await initDB();
   const ip = getLocalIP();
   console.log(`=======================================================`);
   console.log(`🚀 Grocery Sync Server running on:`);
