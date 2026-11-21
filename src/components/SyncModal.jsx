@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { X, Copy, Check, QrCode, Users, Layers } from 'lucide-react';
 
 export default function SyncModal({
