@@ -1,88 +1,28 @@
 /* ============================================================
-   MOBILE CONTAINER & SHELL
+   MOBILE CONTAINER & SHELL (Clean Native Mobile App)
 ============================================================ */
 .app-viewport {
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   justify-content: center;
-  align-items: center;
-  padding: 16px;
-}
-
-/* Phone Mockup Frame for Desktop */
-.mobile-frame-enabled .mobile-device-wrapper {
-  width: 100%;
-  max-width: 440px;
-  height: 920px;
-  max-height: 94vh;
-  background: #1e293b;
-  border-radius: 46px;
-  padding: 12px;
-  box-shadow: 
-    0 0 0 2px #334155,
-    0 25px 50px -12px rgba(0, 0, 0, 0.6),
-    0 0 80px rgba(16, 185, 129, 0.15);
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Fullscreen mode on desktop */
-.fullscreen-enabled .mobile-device-wrapper {
-  width: 100%;
-  max-width: 720px;
-  height: 96vh;
-  background: #ffffff;
-  border-radius: 24px;
-  box-shadow: var(--shadow-xl);
+  background: var(--app-bg);
+  overflow: hidden;
   padding: 0;
+  margin: 0;
 }
 
 .mobile-screen-content {
   width: 100%;
+  max-width: 520px;
   height: 100%;
   background: var(--app-bg);
-  border-radius: 36px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
-}
-
-.fullscreen-enabled .mobile-screen-content {
-  border-radius: 24px;
-}
-
-/* Phone top sensor notch */
-.device-top-sensor {
-  display: none;
-}
-.mobile-frame-enabled .device-top-sensor {
-  display: block;
-  position: absolute;
-  top: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 80px;
-  height: 4px;
-  background: #334155;
-  border-radius: 4px;
-  z-index: 50;
-}
-
-/* Bottom home indicator */
-.mobile-home-indicator {
-  position: absolute;
-  bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 120px;
-  height: 4px;
-  background: #cbd5e1;
-  border-radius: 10px;
-  z-index: 40;
-  pointer-events: none;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.06);
 }
 
 /* ============================================================
@@ -3204,6 +3144,8 @@
   background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 50%, #f8fafc 100%);
   padding: 16px;
   box-sizing: border-box;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .auth-page-card {

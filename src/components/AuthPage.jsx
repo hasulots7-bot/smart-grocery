@@ -87,8 +87,8 @@ export default function AuthPage({ onAuthSuccess, lang, setLang, currentUser, on
     if (signupType === 'join-family' && !familyCodeInput.trim()) {
       setError(
         lang === 'ta'
-          ? 'அப்பா வழங்கிய குடும்பக் குறியீட்டை உள்ளிடவும்.'
-          : 'Please enter the Family Sync Code provided by the family head.'
+          ? 'குடும்பக் குறியீட்டை (Family Code) உள்ளிடவும்.'
+          : 'Please enter the Family Sync Code.'
       );
       return;
     }
@@ -97,13 +97,13 @@ export default function AuthPage({ onAuthSuccess, lang, setLang, currentUser, on
 
     try {
       const payload = {
-        name: name.trim() || (signupType === 'create-family' ? 'அப்பா (Father)' : 'அம்மா (Mother)'),
+        name: name.trim() || 'User',
         username: username.trim(),
         password,
         householdChoice: signupType === 'create-family' ? 'create' : 'join',
         existingCode: signupType === 'join-family' ? familyCodeInput.trim().toUpperCase() : undefined,
         newHouseholdName: signupType === 'create-family'
-          ? (familyNameInput.trim() || `${name || 'நமது'} குடும்பம்`)
+          ? (familyNameInput.trim() || `${name.trim() || 'நமது'} குடும்பம்`)
           : undefined
       };
 
@@ -390,8 +390,8 @@ export default function AuthPage({ onAuthSuccess, lang, setLang, currentUser, on
               <strong>👉 {lang === 'ta' ? 'அடுத்த படி:' : 'Next Step:'}</strong>
               <p>
                 {lang === 'ta'
-                  ? `மற்றொரு குடும்ப உறுப்பினர் (அம்மா) தனது மொபைலில் "குடும்பக் குறியீட்டுடன் இணைய" என்பதைத் தொட்டு, "${generatedFamilyInfo.code}" என்ற குறியீட்டை உள்ளிட்டால், உடனே ஒரே பட்டியலில் இணைந்து விடலாம்!`
-                  : `Another family member can tap "Join with Code" and enter "${generatedFamilyInfo.code}" to instantly sync!`}
+                  ? `மற்றொரு குடும்ப உறுப்பினர் தனது மொபைலில் "குடும்பக் குறியீட்டுடன் இணைய" என்பதைத் தொட்டு, "${generatedFamilyInfo.code}" என்ற குறியீட்டை உள்ளிட்டால், உடனே ஒரே பட்டியலில் இணைந்து கொள்ளலாம்!`
+                  : `Any family member can tap "Join with Code" and enter "${generatedFamilyInfo.code}" on their phone to sync together!`}
               </p>
             </div>
 
@@ -521,7 +521,7 @@ export default function AuthPage({ onAuthSuccess, lang, setLang, currentUser, on
                     <Home size={15} />
                     <div>
                       <strong>{lang === 'ta' ? 'புதிய குடும்பம்' : 'Create Family'}</strong>
-                      <span>{lang === 'ta' ? 'அப்பா (தலைவர்)' : 'Father (Head)'}</span>
+                      <span>{lang === 'ta' ? 'குறியீடு உருவாக்க' : 'Generate Code'}</span>
                     </div>
                   </button>
 
@@ -533,7 +533,7 @@ export default function AuthPage({ onAuthSuccess, lang, setLang, currentUser, on
                     <Key size={15} />
                     <div>
                       <strong>{lang === 'ta' ? 'குறியீட்டுடன் இணைய' : 'Join with Code'}</strong>
-                      <span>{lang === 'ta' ? 'அம்மா (உறுப்பினர்)' : 'Mother (Member)'}</span>
+                      <span>{lang === 'ta' ? 'குறியீட்டை உள்ளிட' : 'Enter Code'}</span>
                     </div>
                   </button>
                 </div>
@@ -547,8 +547,8 @@ export default function AuthPage({ onAuthSuccess, lang, setLang, currentUser, on
                           ? 'முதலில் பதிவு செய்ததும் ஒரு பிரத்யேக "குடும்பக் குறியீடு" (Family Code) வழங்கப்படும். அதை குடும்பத்தினர் உள்ளிட்டு இணையலாம்.'
                           : 'Register to generate a unique Family Sync Code you can share with your family.')
                       : (lang === 'ta'
-                          ? 'அப்பா அனுப்பிய குடும்பக் குறியீட்டை (Family Code) கீழே உள்ளிட்டு இணைத்துக் கொள்ளுங்கள்.'
-                          : 'Enter the Family Sync Code provided by your family head to join the shared list.')}
+                          ? 'குடும்ப உறுப்பினர் பகிர்ந்த குடும்பக் குறியீட்டை (Family Code) கீழே உள்ளிட்டு ஒரே பட்டியலில் இணைத்துக் கொள்ளுங்கள்.'
+                          : 'Enter the Family Sync Code shared with you to join your family shopping list.')}
                   </p>
                 </div>
 
@@ -575,7 +575,7 @@ export default function AuthPage({ onAuthSuccess, lang, setLang, currentUser, on
                     <User size={16} className="field-icon" />
                     <input
                       type="text"
-                      placeholder={lang === 'ta' ? (signupType === 'create-family' ? 'எ.கா: அப்பா / குமார்' : 'எ.கா: அம்மா / செல்வி') : 'e.g. Kumar'}
+                      placeholder={lang === 'ta' ? 'எ.கா: குமார், பிரியா...' : 'e.g. Kumar, Priya...'}
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       required

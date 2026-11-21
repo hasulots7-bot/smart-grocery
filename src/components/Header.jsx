@@ -1,11 +1,9 @@
 import React from 'react';
-import { Globe, User, LogOut, Layers, Key } from 'lucide-react';
+import { Globe, User, LogOut, Key } from 'lucide-react';
 
 export default function Header({ 
   lang, 
   setLang, 
-  isDualMobileView,
-  setIsDualMobileView,
   user,
   household,
   onlinePeers,
@@ -63,17 +61,6 @@ export default function Header({
           >
             <Globe size={13} />
             <span>{lang === 'ta' ? 'EN' : 'தமிழ்'}</span>
-          </button>
-
-          {/* 2 Mobiles Simulator Toggle (Desktop only) */}
-          <button
-            type="button"
-            className={`header-pill-btn dual-sim-btn desktop-only ${isDualMobileView ? 'active-sim' : ''}`}
-            onClick={() => setIsDualMobileView(!isDualMobileView)}
-            title={isDualMobileView ? 'Single View' : 'Simulate 2 Mobiles Side-by-Side'}
-          >
-            <Layers size={13} />
-            <span>2 📱</span>
           </button>
 
           {/* Logout */}

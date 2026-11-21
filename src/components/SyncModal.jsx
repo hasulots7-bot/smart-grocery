@@ -9,8 +9,6 @@ export default function SyncModal({
   onlinePeers,
   networkInfo,
   onJoinHousehold,
-  onToggleDualMobileView,
-  isDualMobileView,
   lang
 }) {
   const [copiedCode, setCopiedCode] = useState(false);
@@ -133,28 +131,7 @@ export default function SyncModal({
           </div>
         )}
 
-        {/* Dual Phone Simulator Mode Toggle */}
-        <div className="dual-preview-promo-box">
-          <div className="dual-promo-info">
-            <Layers size={20} className="dual-icon" />
-            <div>
-              <strong>{lang === 'ta' ? 'கணினியில் 2 மொபைல் காட்சி' : 'Dual Mobile Side-by-Side View'}</strong>
-              <p>{lang === 'ta' ? 'இரண்டு மொபைல்களை திரையிலேயே அருகருகே வைத்து நேரடி ஒத்திசைவை சோதிக்கலாம்' : 'Simulate Phone 1 & Phone 2 side-by-side on screen'}</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            className={`dual-toggle-btn ${isDualMobileView ? 'active' : ''}`}
-            onClick={() => {
-              onToggleDualMobileView();
-              onClose();
-            }}
-          >
-            {isDualMobileView 
-              ? (lang === 'ta' ? 'ஒற்றை மொபைல் தோற்றம்' : 'Single Mobile') 
-              : (lang === 'ta' ? '2 மொபைல் தோற்றம் காட்டு' : 'Open 2 Mobiles')}
-          </button>
-        </div>
+
 
         {/* Active Connected Devices List */}
         {onlinePeers && onlinePeers.length > 0 && (

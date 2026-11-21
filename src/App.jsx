@@ -81,8 +81,6 @@ export default function App() {
     }
   });
 
-  const [isMobileFrame, setIsMobileFrame] = useState(true);
-  const [isDualMobileView, setIsDualMobileView] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -419,141 +417,10 @@ export default function App() {
   const purchasedCount = items.filter(i => i.purchased).length;
   const toBuyCount = totalCount - purchasedCount;
 
-  // Single Phone Component Render
-  const renderPhoneView = (deviceLabel, isPhone2 = false) => {
-    return (
-      <div className="mobile-device-wrapper">
-        <div className="device-top-sensor"></div>
-
-        {/* Device Role Badge */}
-        <div className={`device-role-badge ${isPhone2 ? 'phone-2-badge' : 'phone-1-badge'}`}>
-          <span className="live-sync-indicator">🟢 Live Synced</span>
-          <span>{deviceLabel}</span>
-        </div>
-
-        <div className="mobile-screen-content">
-          <Header
-            lang={lang}
-            setLang={setLang}
-            isMobileFrame={isMobileFrame}
-            setIsMobileFrame={setIsMobileFrame}
-            isDualMobileView={isDualMobileView}
-            setIsDualMobileView={setIsDualMobileView}
-            totalCount={totalCount}
-            purchasedCount={purchasedCount}
-            user={isPhone2 ? { ...user, name: 'அம்மா (Amma)' } : user}
-            household={household}
-            onlinePeers={onlinePeers}
-            onOpenAuthPage={() => setCurrentView('auth')}
-            onOpenSyncModal={() => setIsSyncModalOpen(true)}
-            onUpdateAllOnlineRates={handleUpdateAllOnlineRates}
-            isUpdatingRates={isUpdatingRates}
-            onLogout={handleLogout}
-          />
-
-          <main className="main-scroll-content">
-            <SummaryCard
-              lang={lang}
-              items={items}
-              household={household}
-              user={user}
-              onDeletePurchased={handleDeletePurchased}
-              onSelectAll={() => {
-                const allP = items.every(i => i.purchased);
-                const updated = items.map(i => ({ ...i, purchased: !allP }));
-                setItems(updated);
-              }}
-              onOpenAddModal={() => { setEditItem(null); setIsAddModalOpen(true); }}
-              onOpenShareModal={() => setIsShareModalOpen(true)}
-              onUpdateAllOnlineRates={handleUpdateAllOnlineRates}
-              isUpdatingRates={isUpdatingRates}
-            />
-
-            <FilterBar
-              lang={lang}
-              items={items}
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              statusFilter={statusFilter}
-              setStatusFilter={setStatusFilter}
-              selectedCategory={selectedCategory}
-              setSelectedCategory={setSelectedCategory}
-              toBuyCount={toBuyCount}
-              purchasedCount={purchasedCount}
-              totalCount={totalCount}
-            />
-
-            <div className="grocery-list-container">
-              {filteredItems.length > 0 ? (
-                <div className="grocery-cards-stack">
-                  {filteredItems.map(item => (
-                    <GroceryItemCard
-                      key={item.id}
-                      item={item}
-                      lang={lang}
-                      onTogglePurchased={handleTogglePurchased}
-                      onDeleteItem={handleDeleteItem}
-                      onEditItem={(itemToEdit) => {
-                        setEditItem(itemToEdit);
-                        setIsAddModalOpen(true);
-                      }}
-                      onPreviewPhoto={(item) => setPreviewItem(item)}
-                      onUpdateQuantity={handleUpdateQuantity}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="empty-state-box">
-                  <span className="empty-emoji">🥦</span>
-                  <h3>
-                    {statusFilter === 'purchased' 
-                      ? (lang === 'ta' ? 'வாங்கிய பொருட்கள் எதுவும் இல்லை' : 'No purchased items')
-                      : (lang === 'ta' ? 'பொருட்கள் எதுவும் காணப்படவில்லை' : 'No grocery items')}
-                  </h3>
-                  <button
-                    type="button"
-                    className="empty-action-btn primary"
-                    onClick={() => { setEditItem(null); setIsAddModalOpen(true); }}
-                  >
-                    <Plus size={16} />
-                    <span>{lang === 'ta' ? 'பொருள் சேர்க்க' : 'Add Item'}</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="bottom-scroll-spacer"></div>
-          </main>
-
-          <BottomNav
-            statusFilter={statusFilter}
-            setStatusFilter={setStatusFilter}
-            onOpenAddModal={() => { setEditItem(null); setIsAddModalOpen(true); }}
-            onDeletePurchased={handleDeletePurchased}
-            purchasedCount={purchasedCount}
-            toBuyCount={toBuyCount}
-            lang={lang}
-          />
-
-          {!isPhone2 && (
-            <Toast
-              toast={toast}
-              onUndo={handleUndo}
-              onClose={() => setToast(null)}
-              lang={lang}
-            />
-          )}
-
-          <div className="mobile-home-indicator"></div>
-        </div>
-      </div>
-    );
-  };
-
   // If user is not authenticated OR currentView is 'auth', show the dedicated Login & Register Page!
   if (!user || currentView === 'auth') {
     return (
-      <div className={`app-viewport ${isMobileFrame ? 'mobile-frame-enabled' : 'fullscreen-enabled'}`}>
+      <div className="app-viewport fullscreen-enabled">
         <AuthPage
           onAuthSuccess={handleAuthSuccess}
           lang={lang}
@@ -572,30 +439,110 @@ export default function App() {
   }
 
   return (
-    <div className={`app-viewport ${isDualMobileView ? 'dual-view-active' : ''} ${isMobileFrame ? 'mobile-frame-enabled' : 'fullscreen-enabled'}`}>
-      
-      {/* If Dual Mobile View is active, render Phone 1 & Phone 2 side-by-side! */}
-      {isDualMobileView ? (
-        <div className="dual-mobiles-container">
-          <div className="dual-phone-column">
-            {renderPhoneView(lang === 'ta' ? 'மொபைல் 1: அப்பா (வீட்டில் - Home)' : 'Mobile 1: Home Device (Dad)', false)}
+    <div className="app-viewport fullscreen-enabled">
+      <div className="mobile-screen-content">
+        <Header
+          lang={lang}
+          setLang={setLang}
+          user={user}
+          household={household}
+          onlinePeers={onlinePeers}
+          onOpenAuthPage={() => setCurrentView('auth')}
+          onOpenSyncModal={() => setIsSyncModalOpen(true)}
+          onLogout={handleLogout}
+        />
+
+        <main className="main-scroll-content">
+          <SummaryCard
+            lang={lang}
+            items={items}
+            household={household}
+            user={user}
+            onDeletePurchased={handleDeletePurchased}
+            onSelectAll={() => {
+              const allP = items.every(i => i.purchased);
+              const updated = items.map(i => ({ ...i, purchased: !allP }));
+              setItems(updated);
+            }}
+            onOpenAddModal={() => { setEditItem(null); setIsAddModalOpen(true); }}
+            onOpenShareModal={() => setIsShareModalOpen(true)}
+            onUpdateAllOnlineRates={handleUpdateAllOnlineRates}
+            isUpdatingRates={isUpdatingRates}
+          />
+
+          <FilterBar
+            lang={lang}
+            items={items}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            selectedCategory={selectedCategory}
+            setSelectedCategory={setSelectedCategory}
+            toBuyCount={toBuyCount}
+            purchasedCount={purchasedCount}
+            totalCount={totalCount}
+          />
+
+          <div className="grocery-list-container">
+            {filteredItems.length > 0 ? (
+              <div className="grocery-cards-stack">
+                {filteredItems.map(item => (
+                  <GroceryItemCard
+                    key={item.id}
+                    item={item}
+                    lang={lang}
+                    onTogglePurchased={handleTogglePurchased}
+                    onDeleteItem={handleDeleteItem}
+                    onEditItem={(itemToEdit) => {
+                      setEditItem(itemToEdit);
+                      setIsAddModalOpen(true);
+                    }}
+                    onPreviewPhoto={(item) => setPreviewItem(item)}
+                    onUpdateQuantity={handleUpdateQuantity}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state-box">
+                <span className="empty-emoji">🥦</span>
+                <h3>
+                  {statusFilter === 'purchased'
+                    ? (lang === 'ta' ? 'வாங்கிய பொருட்கள் எதுவும் இல்லை' : 'No purchased items')
+                    : (lang === 'ta' ? 'பொருட்கள் எதுவும் காணப்படவில்லை' : 'No grocery items')}
+                </h3>
+                <button
+                  type="button"
+                  className="empty-action-btn primary"
+                  onClick={() => { setEditItem(null); setIsAddModalOpen(true); }}
+                >
+                  <Plus size={16} />
+                  <span>{lang === 'ta' ? 'பொருள் சேர்க்க' : 'Add Item'}</span>
+                </button>
+              </div>
+            )}
           </div>
-          <div className="dual-sync-bridge">
-            <div className="bridge-pill">
-              <span className="bridge-dot">🟢</span>
-              <span>2-Way Live Sync ⚡</span>
-            </div>
-          </div>
-          <div className="dual-phone-column">
-            {renderPhoneView(lang === 'ta' ? 'மொபைல் 2: அம்மா (கடையில் - Supermarket)' : 'Mobile 2: Shop Device (Mom)', true)}
-          </div>
-        </div>
-      ) : (
-        renderPhoneView(
-          user ? `${user.name} (${household?.code})` : 'Mobile 1 (Home)',
-          false
-        )
-      )}
+
+          <div className="bottom-scroll-spacer"></div>
+        </main>
+
+        <BottomNav
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          onOpenAddModal={() => { setEditItem(null); setIsAddModalOpen(true); }}
+          onDeletePurchased={handleDeletePurchased}
+          purchasedCount={purchasedCount}
+          toBuyCount={toBuyCount}
+          lang={lang}
+        />
+
+        <Toast
+          toast={toast}
+          onUndo={handleUndo}
+          onClose={() => setToast(null)}
+          lang={lang}
+        />
+      </div>
 
       {/* Auth Modal (Register / Login) */}
       <AuthModal
@@ -606,7 +553,7 @@ export default function App() {
         currentCode={household?.code}
       />
 
-      {/* Sync Modal (QR Code & 2-Mobile Pairing) */}
+      {/* Sync Modal (QR Code & Family Code) */}
       <SyncModal
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}
@@ -615,8 +562,6 @@ export default function App() {
         onlinePeers={onlinePeers}
         networkInfo={networkInfo}
         onJoinHousehold={handleJoinHousehold}
-        onToggleDualMobileView={() => setIsDualMobileView(!isDualMobileView)}
-        isDualMobileView={isDualMobileView}
         lang={lang}
       />
 
