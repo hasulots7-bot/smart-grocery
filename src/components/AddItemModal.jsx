@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Sparkles, RefreshCw, Check, Upload, Globe } from 'lucide-react';
 import { PRESET_PHOTOS, CATEGORIES, UNITS } from '../data/initialGroceries';
-import { findGroceryMatch, getGrocerySuggestions, detectCategory } from '../data/groceryDictionary';
+import { findGroceryMatch, getGrocerySuggestions, detectCategory, detectUnit, normalizeCategory } from '../data/groceryDictionary';
 import { groceryApi } from '../services/api';
 
 // Filter out 'all' from addable item categories
@@ -12,11 +12,12 @@ export default function AddItemModal({
   onClose,
   onSave,
   editItem,
+  defaultCategory = 'vegetables',
   lang
 }) {
   const [name, setName] = useState('');
   const [tamilName, setTamilName] = useState('');
-  const [category, setCategory] = useState('vegetables');
+  const [category, setCategory] = useState(defaultCategory && defaultCategory !== 'all' ? defaultCategory : 'vegetables');
   const [quantity, setQuantity] = useState('1');
   const [unit, setUnit] = useState('kg');
   const [price, setPrice] = useState('');
@@ -36,22 +37,25 @@ export default function AddItemModal({
   useEffect(() => {
     if (isOpen) {
       if (editItem) {
+        const normCat = normalizeCategory(editItem.category, editItem.name);
         setName(editItem.name || '');
         setTamilName(editItem.tamilName || '');
-        setCategory(editItem.category || 'vegetables');
+        setCategory(normCat);
         setQuantity(editItem.quantity ? editItem.quantity.toString() : '1');
-        setUnit(editItem.unit || 'kg');
+        setUnit(editItem.unit || detectUnit(editItem.name, normCat));
         setPrice(editItem.price ? editItem.price.toString() : '');
         setPhotoUrl(editItem.photoUrl || PRESET_PHOTOS[0]?.url || '');
         setEmoji(editItem.emoji || '🛒');
         setNotes(editItem.notes || '');
         setPhotoTab(editItem.photoUrl?.startsWith('data:') ? 'upload' : 'presets');
       } else {
+        const initialCat = (defaultCategory && defaultCategory !== 'all') ? defaultCategory : 'vegetables';
+        const initialUnit = detectUnit('', initialCat);
         setName('');
         setTamilName('');
-        setCategory('vegetables');
+        setCategory(initialCat);
         setQuantity('1');
-        setUnit('kg');
+        setUnit(initialUnit);
         setPrice('');
         setPhotoUrl(PRESET_PHOTOS[0]?.url || '');
         setEmoji('🛒');
@@ -64,7 +68,7 @@ export default function AddItemModal({
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
-  }, [isOpen, editItem]);
+  }, [isOpen, editItem, defaultCategory]);
 
   // Sort presets so photos matching selected category appear first!
   const sortedPresets = useMemo(() => {
@@ -85,15 +89,31 @@ export default function AddItemModal({
 
     // 1. Instant Category Detection (Tamil & English)
     const detected = detectCategory(val);
+    let currentCat = category;
     if (detected && detected !== 'other') {
+      currentCat = detected;
       setCategory(detected);
     }
 
-    // 2. Instant Local Dictionary Match
+    // 2. Instant Unit Auto-Detection based on keyword and category
+    const autoUnit = detectUnit(val, currentCat);
+    if (autoUnit && (!editItem || !editItem.unit)) {
+      setUnit(autoUnit);
+    }
+
+    // 3. Instant Local Dictionary Match
     const match = findGroceryMatch(val);
     if (match) {
       if (match.tamilName) setTamilName(match.tamilName);
-      if (match.category) setCategory(match.category);
+      if (match.category) {
+        currentCat = match.category;
+        setCategory(match.category);
+      }
+      if (match.defaultUnit) {
+        setUnit(match.defaultUnit);
+      } else {
+        setUnit(detectUnit(val, currentCat));
+      }
       if (match.emoji) setEmoji(match.emoji);
       if (match.photoUrl) setPhotoUrl(match.photoUrl);
       if (match.marketRate && !price) setPrice(match.marketRate.toString());
@@ -101,6 +121,7 @@ export default function AddItemModal({
         name: match.name,
         rate: match.marketRate,
         category: match.category,
+        unit: match.defaultUnit || autoUnit,
         source: 'dictionary'
       });
     } else {
@@ -108,7 +129,7 @@ export default function AddItemModal({
     }
     setSuggestions(getGrocerySuggestions(val));
 
-    // 3. Live Internet Auto-Fetch (Debounced 350ms)
+    // 4. Live Internet Auto-Fetch (Debounced 350ms)
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     const clean = val.trim();
     if (clean.length >= 2) {
@@ -117,8 +138,10 @@ export default function AddItemModal({
           const info = await groceryApi.autoFetchItemInfo(clean);
           if (info && info.found) {
             // Apply category from internet if not already set by dictionary
+            let netCat = currentCat;
             if (info.category && (!match || !match.category)) {
-              setCategory(info.category);
+              netCat = normalizeCategory(info.category, clean);
+              setCategory(netCat);
             }
             // Auto-set Internet Photo if user hasn't uploaded a custom photo
             if (info.photoUrl && (!match || !match.photoUrl)) {
@@ -128,16 +151,24 @@ export default function AddItemModal({
             if (info.rate && !price) {
               setPrice(info.rate.toString());
             }
-            if (info.unit && (!editItem || !editItem.unit)) {
-              setUnit(info.unit);
+            // Auto-set Unit from API or detector
+            let normalizedApiUnit = info.unit;
+            if (normalizedApiUnit === 'pkt') normalizedApiUnit = 'pack';
+            if (normalizedApiUnit === 'piece') normalizedApiUnit = 'pcs';
+            if (normalizedApiUnit && (!editItem || !editItem.unit)) {
+              setUnit(normalizedApiUnit);
+            } else if (!match) {
+              setUnit(detectUnit(clean, netCat));
             }
+
             if (info.emoji && (!emoji || emoji === '🛒')) {
               setEmoji(info.emoji);
             }
             setAutoMatchStatus({
               name: info.query || clean,
               rate: info.rate,
-              category: info.category,
+              category: netCat,
+              unit: normalizedApiUnit || autoUnit,
               photoUrl: info.photoUrl,
               lastUpdated: info.lastUpdated,
               source: 'internet'
@@ -153,21 +184,33 @@ export default function AddItemModal({
   const handleSelectSuggestion = (s) => {
     setName(s.name);
     if (s.tamilName) setTamilName(s.tamilName);
-    if (s.category) setCategory(s.category);
+    const normCat = normalizeCategory(s.category, s.name);
+    setCategory(normCat);
+    if (s.defaultUnit) {
+      setUnit(s.defaultUnit);
+    } else {
+      setUnit(detectUnit(s.name, normCat));
+    }
     if (s.emoji) setEmoji(s.emoji);
     if (s.photoUrl) setPhotoUrl(s.photoUrl);
     if (s.marketRate) setPrice(s.marketRate.toString());
-    setAutoMatchStatus({ name: s.name, rate: s.marketRate, source: 'dictionary' });
+    setAutoMatchStatus({ name: s.name, rate: s.marketRate, unit: s.defaultUnit, source: 'dictionary' });
     setSuggestions([]);
   };
 
   const handleCategorySelect = (cat) => {
-    setCategory(cat.id);
+    const norm = normalizeCategory(cat.id);
+    setCategory(norm);
+    // Auto-update unit to match newly selected category!
+    const autoU = detectUnit(name, norm);
+    if (autoU) {
+      setUnit(autoU);
+    }
     if (!emoji || emoji === '🛒') {
       setEmoji(cat.icon);
     }
     // Pick the first photo from this category if current photo is generic
-    const matchPhoto = PRESET_PHOTOS.find(p => p.category === cat.id);
+    const matchPhoto = PRESET_PHOTOS.find(p => p.category === norm);
     if (matchPhoto && (!photoUrl || photoUrl === PRESET_PHOTOS[0]?.url)) {
       setPhotoUrl(matchPhoto.url);
     }
@@ -188,9 +231,10 @@ export default function AddItemModal({
     }
   };
 
-  const handleFileUpload = (e) => {
+  const handlePhotoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     const reader = new FileReader();
     reader.onload = (uploadEvent) => {
       const result = uploadEvent.target?.result;
@@ -206,13 +250,16 @@ export default function AddItemModal({
     e.preventDefault();
     if (!name.trim()) return;
 
+    const finalCat = normalizeCategory(category, name.trim());
+    const finalUnit = unit || detectUnit(name.trim(), finalCat);
+
     onSave({
       id: editItem?.id || `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       name: name.trim(),
       tamilName: tamilName.trim() || name.trim(),
-      category: category || 'vegetables',
+      category: finalCat,
       quantity: quantity.trim() || '1',
-      unit: unit || 'kg',
+      unit: finalUnit,
       price: price.trim() ? Number(price) : 0,
       photoUrl: photoUrl || PRESET_PHOTOS[0]?.url || '',
       emoji: emoji || '🛒',

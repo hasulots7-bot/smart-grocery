@@ -3679,4 +3679,93 @@
   margin: 0 0 8px 0;
 }
 
+/* -------------------------------------------------------------
+   Active Category Filter Banner & Card Category Tags
+   ------------------------------------------------------------- */
+.active-category-filter-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.active-filter-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-badge-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.filter-badge-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: #15803d;
+}
+
+.clear-category-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #ffffff;
+  border: 1px solid #86efac;
+  color: #15803d;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.15s ease;
+}
+
+.clear-category-filter-btn:active {
+  transform: scale(0.95);
+  background: #dcfce7;
+}
+
+/* Card Sub-header & Category Tag */
+.card-sub-header-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+  margin-bottom: 4px;
+}
+
+.card-category-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #047857;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 1px 7px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.card-category-tag:hover {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+
+.card-category-tag:active {
+  transform: scale(0.95);
+}
+
+
 

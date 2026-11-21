@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import confetti from 'canvas-confetti';
-import { INITIAL_GROCERIES } from './data/initialGroceries';
+import { INITIAL_GROCERIES, CATEGORIES } from './data/initialGroceries';
+import { normalizeCategory } from './data/groceryDictionary';
 import Header from './components/Header';
 import SummaryCard from './components/SummaryCard';
 import FilterBar from './components/FilterBar';
@@ -14,7 +15,7 @@ import SyncModal from './components/SyncModal';
 import BottomNav from './components/BottomNav';
 import Toast from './components/Toast';
 import { authApi, groceryApi, createWebSocketSync } from './services/api';
-import { Plus } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import './App.css';
 
 const STORAGE_KEY = 'smart_grocery_list_v2';
@@ -413,12 +414,15 @@ export default function App() {
     );
   };
 
-  // 10. Filtered Items Logic
+  // 10. Filtered Items Logic (Strict Normalized Category Matching)
   const filteredItems = useMemo(() => {
     return items.filter(item => {
       if (statusFilter === 'tobuy' && item.purchased) return false;
       if (statusFilter === 'purchased' && !item.purchased) return false;
-      if (selectedCategory !== 'all' && item.category !== selectedCategory) return false;
+      if (selectedCategory !== 'all') {
+        const itemCat = normalizeCategory(item.category, item.name || item.tamilName);
+        if (itemCat !== selectedCategory) return false;
+      }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const enMatch = item.name?.toLowerCase().includes(q);
@@ -429,6 +433,11 @@ export default function App() {
       return true;
     });
   }, [items, statusFilter, selectedCategory, searchQuery]);
+
+  // Active Category Details
+  const activeCategoryObj = useMemo(() => {
+    return CATEGORIES.find(c => c.id === selectedCategory);
+  }, [selectedCategory]);
 
   const totalCount = items.length;
   const purchasedCount = items.filter(i => i.purchased).length;
@@ -501,6 +510,28 @@ export default function App() {
             totalCount={totalCount}
           />
 
+          {/* Active Category Filter Status Banner */}
+          {selectedCategory !== 'all' && (
+            <div className="active-category-filter-banner">
+              <div className="active-filter-badge">
+                <span className="filter-badge-icon">{activeCategoryObj?.icon}</span>
+                <span className="filter-badge-text">
+                  {lang === 'ta' ? `${activeCategoryObj?.labelTa} மட்டும்` : `${activeCategoryObj?.labelEn} Only`}
+                  {' '}({filteredItems.length})
+                </span>
+              </div>
+              <button
+                type="button"
+                className="clear-category-filter-btn"
+                onClick={() => setSelectedCategory('all')}
+                title={lang === 'ta' ? 'அனைத்து பிரிவுகளையும் காட்டு' : 'Show all categories'}
+              >
+                <X size={14} />
+                <span>{lang === 'ta' ? 'அனைத்தும்' : 'Show All'}</span>
+              </button>
+            </div>
+          )}
+
           <div className="grocery-list-container">
             {filteredItems.length > 0 ? (
               <div className="grocery-cards-stack">
@@ -517,16 +548,19 @@ export default function App() {
                     }}
                     onPreviewPhoto={(item) => setPreviewItem(item)}
                     onUpdateQuantity={handleUpdateQuantity}
+                    onSelectCategory={(catId) => setSelectedCategory(catId)}
                   />
                 ))}
               </div>
             ) : (
               <div className="empty-state-box">
-                <span className="empty-emoji">🥦</span>
+                <span className="empty-emoji">{activeCategoryObj?.icon || '🥦'}</span>
                 <h3>
-                  {statusFilter === 'purchased'
-                    ? (lang === 'ta' ? 'வாங்கிய பொருட்கள் எதுவும் இல்லை' : 'No purchased items')
-                    : (lang === 'ta' ? 'பொருட்கள் எதுவும் காணப்படவில்லை' : 'No grocery items')}
+                  {selectedCategory !== 'all'
+                    ? (lang === 'ta' ? `${activeCategoryObj?.labelTa} பிரிவில் பொருட்கள் எதுவும் இல்லை` : `No items in ${activeCategoryObj?.labelEn}`)
+                    : (statusFilter === 'purchased'
+                      ? (lang === 'ta' ? 'வாங்கிய பொருட்கள் எதுவும் இல்லை' : 'No purchased items')
+                      : (lang === 'ta' ? 'பொருட்கள் எதுவும் காணப்படவில்லை' : 'No grocery items'))}
                 </h3>
                 <button
                   type="button"
@@ -534,7 +568,11 @@ export default function App() {
                   onClick={() => { setEditItem(null); setIsAddModalOpen(true); }}
                 >
                   <Plus size={16} />
-                  <span>{lang === 'ta' ? 'பொருள் சேர்க்க' : 'Add Item'}</span>
+                  <span>
+                    {selectedCategory !== 'all'
+                      ? (lang === 'ta' ? `${activeCategoryObj?.labelTa} சேர்க்க` : `Add ${activeCategoryObj?.labelEn}`)
+                      : (lang === 'ta' ? 'பொருள் சேர்க்க' : 'Add Item')}
+                  </span>
                 </button>
               </div>
             )}
@@ -582,12 +620,13 @@ export default function App() {
         lang={lang}
       />
 
-      {/* Add / Edit Modal with AUTO-PHOTO & AUTO-ONLINE RATE */}
+      {/* Add / Edit Modal with AUTO-PHOTO, AUTO-ONLINE RATE & AUTO-UNIT */}
       <AddItemModal
         isOpen={isAddModalOpen}
         onClose={() => { setIsAddModalOpen(false); setEditItem(null); }}
         onSave={handleSaveItem}
         editItem={editItem}
+        defaultCategory={selectedCategory !== 'all' ? selectedCategory : 'vegetables'}
         lang={lang}
       />
 

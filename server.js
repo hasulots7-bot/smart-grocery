@@ -568,18 +568,20 @@ app.get('/api/groceries/auto-fetch-info', async (req, res) => {
   if (matchedRate) {
     finalPrice = Math.max(1, Math.round(matchedRate.currentPrice * (1 + fluctuationPercent / 100)));
     unit = matchedRate.unit || 'kg';
+    if (unit === 'pkt') unit = 'pack';
+    if (unit === 'piece') unit = 'pcs';
   } else if (category === 'medicines') {
     finalPrice = 35 + (dayOfMonth % 20);
-    unit = 'strip';
+    unit = /syrup|liquid|drops/i.test(qLower) ? 'bottle' : (/ointment|balm|moov/i.test(qLower) ? 'tube' : 'strip');
   } else if (category === 'fruits') {
     finalPrice = 80 + (dayOfMonth % 40);
-    unit = 'kg';
+    unit = /banana/i.test(qLower) ? 'dozen' : (/watermelon|pineapple/i.test(qLower) ? 'pcs' : 'kg');
   } else if (category === 'dairy') {
     finalPrice = 30 + (dayOfMonth % 15);
-    unit = 'pkt';
+    unit = /milk|பால்/i.test(qLower) ? 'L' : (/egg|முட்டை/i.test(qLower) ? 'pcs' : 'pack');
   } else if (category === 'staples') {
     finalPrice = 60 + (dayOfMonth % 50);
-    unit = 'kg';
+    unit = /oil|எண்ணெய்/i.test(qLower) ? 'L' : (/powder|turmeric|chilli powder|pepper|jeera/i.test(qLower) ? 'g' : 'kg');
   } else if (category === 'bakery') {
     finalPrice = 40 + (dayOfMonth % 10);
     unit = 'pack';
@@ -588,7 +590,7 @@ app.get('/api/groceries/auto-fetch-info', async (req, res) => {
     unit = 'pack';
   } else {
     finalPrice = 35 + (dayOfMonth % 25);
-    unit = 'kg';
+    unit = /keerai|coriander|mint|curry/i.test(qLower) ? 'bunch' : (/lemon|coconut/i.test(qLower) ? 'pcs' : 'kg');
   }
 
   // 3. Auto-fetch real photo from Internet (Wikipedia Summary API)

@@ -675,3 +675,94 @@ export function detectCategory(inputText) {
 
   return 'other';
 }
+
+// Canonical category normalizer (handles singular/plural, cases, and auto-fallback)
+export function normalizeCategory(category, itemName = '') {
+  const c = (category || '').toLowerCase().trim();
+  if (c === 'vegetables' || c === 'vegetable' || c === 'veg') return 'vegetables';
+  if (c === 'fruits' || c === 'fruit') return 'fruits';
+  if (c === 'medicines' || c === 'medicine' || c === 'health') return 'medicines';
+  if (c === 'dairy' || c === 'milk') return 'dairy';
+  if (c === 'staples' || c === 'staple' || c === 'grocery' || c === 'grains') return 'staples';
+  if (c === 'bakery' || c === 'bakes') return 'bakery';
+  if (c === 'snacks' || c === 'snack' || c === 'drinks' || c === 'beverages') return 'snacks';
+  if (c === 'other' || !c) {
+    if (itemName && itemName.trim()) {
+      const detected = detectCategory(itemName);
+      if (detected !== 'other') return detected;
+    }
+    return 'other';
+  }
+  // Try detecting from item name if given
+  if (itemName && itemName.trim()) {
+    const detected = detectCategory(itemName);
+    if (detected !== 'other') return detected;
+  }
+  return 'other';
+}
+
+// Smart Unit Detector based on product name and category
+export function detectUnit(inputText = '', category = '') {
+  const text = (inputText || '').toLowerCase().trim();
+  const cat = normalizeCategory(category, inputText);
+
+  // 1. Medicines
+  if (cat === 'medicines' || /dolo|paracetamol|tablet|capsule|pill|crocin|calpol|azithromycin|cetirizine|strip|மாத்திரை/i.test(text)) {
+    if (/syrup|tonic|drops|liquid|oil|மருந்து திரவம்|இருமல் மருந்து|டானிக்/i.test(text)) return 'bottle';
+    if (/ointment|cream|gel|balm|moov|volini|தைலம்|கிரீம்/i.test(text)) return 'tube';
+    if (/bandaid|plaster|bandage|cotton|eno|electral|powder|ors|பேன்ட்-எய்ட்|பஞ்ச்/i.test(text)) return 'pack';
+    return 'strip';
+  }
+
+  // 2. Bunches / Greens / Herbs (கட்டு)
+  if (/keerai|coriander|mint|curry leaves|palak|methi|pudina|koththamalli|bunch|bundle|கீரை|புதினா|கொத்தமல்லி|கறிவேப்பிலை|கட்டு/i.test(text)) {
+    return 'bunch';
+  }
+
+  // 3. Liquid / Volume (L / ml)
+  if (/oil|milk|ghee|juice|soda|water|diesel|petrol|நல்லெண்ணெய்|கடலை எண்ணெய்|தேங்காய் எண்ணெய்|பால்|நெய்/i.test(text)) {
+    if (/curd|paneer|butter|தயிர்|பன்னீர்|வெண்ணெய்/i.test(text)) return 'pack';
+    return 'L';
+  }
+
+  // 4. Per Piece / Dozen
+  if (/banana|வாழைப்பழம்/i.test(text)) return 'dozen';
+  if (/egg|eggs|muttai|முட்டை|coconut|தேங்காய்|lemon|lime|எலுமிச்சை|watermelon|தர்பூசணி|pineapple|அன்னாசி|pumpkin|பூசணி|soap|சோப்பு|brush|பிரஷ்/i.test(text)) {
+    return 'pcs';
+  }
+
+  // 5. Spices & Small Packets (Gram)
+  if (/chilli powder|turmeric|pepper|jeera|cumin|mustard|fenugreek|cardamom|clove|cinnamon|asam|perungayam|tamarind|ginger|garlic|chilli|மஞ்சள் தூள்|மிளகாய் தூள்|மிளகு|சீரகம்|கடுகு|ஏலக்காய்|கிராம்பு|பட்டை|பெருங்காயம்|புளி|இஞ்சி|பூண்டு|பச்சை மிளகாய்/i.test(text)) {
+    return 'g';
+  }
+
+  // 6. Bakery & Packaged Snacks
+  if (cat === 'bakery' || /bread|bun|pav|rusk|cake|biscuit|chips|mixture|murukku|noodles|maggi|pasta|chocolate|பிரெட்|ரொட்டி|பன்|பிஸ்கட்/i.test(text)) {
+    return 'pack';
+  }
+
+  // 7. Staples & Grains (kg)
+  if (cat === 'staples' || /rice|wheat|atta|dal|sugar|salt|maida|rava|sooji|flour|அரிசி|பருப்பு|கோதுமை|சர்க்கரை|உப்பு/i.test(text)) {
+    return 'kg';
+  }
+
+  // 8. Vegetables & Fruits default
+  if (cat === 'vegetables' || cat === 'fruits') {
+    return 'kg';
+  }
+
+  // Fallbacks by Category
+  switch (cat) {
+    case 'medicines': return 'strip';
+    case 'dairy': return 'L';
+    case 'bakery': return 'pack';
+    case 'snacks': return 'pack';
+    case 'other': return 'pcs';
+    case 'vegetables':
+    case 'fruits':
+    case 'staples':
+    default:
+      return 'kg';
+  }
+}
+

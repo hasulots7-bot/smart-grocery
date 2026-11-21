@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Check, Trash2, Edit3, Plus, Minus, ZoomIn } from 'lucide-react';
+import { CATEGORIES } from '../data/initialGroceries';
+import { normalizeCategory } from '../data/groceryDictionary';
 
 export default function GroceryItemCard({
   item,
@@ -8,12 +10,16 @@ export default function GroceryItemCard({
   onDeleteItem,
   onEditItem,
   onPreviewPhoto,
-  onUpdateQuantity
+  onUpdateQuantity,
+  onSelectCategory
 }) {
   const [imgError, setImgError] = useState(false);
 
   const primaryName = lang === 'ta' ? (item.tamilName || item.name) : item.name;
   const secondaryName = lang === 'ta' ? item.name : (item.tamilName || '');
+
+  const normCat = normalizeCategory(item.category, item.name || item.tamilName);
+  const catInfo = CATEGORIES.find(c => c.id === normCat) || { icon: '📦', labelTa: 'மற்றவை', labelEn: 'Other' };
 
   const handleQtyChange = (delta, e) => {
     e.stopPropagation();
@@ -75,9 +81,21 @@ export default function GroceryItemCard({
           )}
         </div>
 
-        {secondaryName && secondaryName !== primaryName && (
-          <p className="item-sub-title">{secondaryName}</p>
-        )}
+        <div className="card-sub-header-row">
+          {secondaryName && secondaryName !== primaryName && (
+            <p className="item-sub-title">{secondaryName}</p>
+          )}
+          <span
+            className="card-category-tag"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onSelectCategory) onSelectCategory(normCat);
+            }}
+            title={lang === 'ta' ? 'இந்த பிரிவை மட்டும் பார்க்க' : 'Filter by this category'}
+          >
+            {catInfo.icon} {lang === 'ta' ? catInfo.labelTa : catInfo.labelEn}
+          </span>
+        </div>
 
         {item.notes && (
           <p className="item-notes">

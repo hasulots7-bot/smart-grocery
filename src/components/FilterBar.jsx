@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Search, X } from 'lucide-react';
 import { CATEGORIES } from '../data/initialGroceries';
+import { normalizeCategory } from '../data/groceryDictionary';
 
 export default function FilterBar({
   lang,
@@ -15,11 +16,11 @@ export default function FilterBar({
   purchasedCount,
   totalCount
 }) {
-  // Compute item count per category
+  // Compute item count per category using normalized categories
   const categoryCounts = useMemo(() => {
     const counts = {};
     items.forEach(item => {
-      const cat = item.category || 'other';
+      const cat = normalizeCategory(item.category, item.name || item.tamilName);
       counts[cat] = (counts[cat] || 0) + 1;
     });
     return counts;
@@ -89,7 +90,14 @@ export default function FilterBar({
               key={cat.id}
               type="button"
               className={`cat-chip ${isSelected ? 'active' : ''}`}
-              onClick={() => setSelectedCategory(cat.id)}
+              onClick={() => {
+                // If user clicks the already selected category, toggle back to 'all'
+                if (isSelected && cat.id !== 'all') {
+                  setSelectedCategory('all');
+                } else {
+                  setSelectedCategory(cat.id);
+                }
+              }}
             >
               <span className="chip-icon">{cat.icon}</span>
               <span className="chip-label">
