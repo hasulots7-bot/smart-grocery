@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
-  Smartphone, Key, User, Home, Sparkles, Check, Copy,
-  MessageSquare, ArrowRight, Globe, Wifi, WifiOff, Settings,
+  Smartphone, Key, User, Home, Check, Copy,
+  MessageSquare, ArrowRight, Globe, Wifi, Settings,
   ShieldCheck, LogIn, UserPlus, Eye, EyeOff, ArrowLeft
 } from 'lucide-react';
 import { authApi, getServerUrl } from '../services/api';
@@ -218,41 +218,7 @@ export default function AuthPage({ onAuthSuccess, lang, setLang, currentUser, on
     }
   };
 
-  // 4. Quick 1-Click Demo Logins
-  const handleQuickDemo = async (demoUser) => {
-    setError('');
-    setSuccessMsg('');
-    setLoading(true);
-    try {
-      const res = await authApi.login({
-        username: demoUser,
-        password: '123'
-      });
-      onAuthSuccess(res.user, res.household, res.items);
-    } catch (err) {
-      console.warn('Server demo failed, using offline demo fallback', err);
-      handleOfflineContinue(demoUser === 'appa' ? 'appa' : 'amma');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  // 5. Offline Fallback Mode
-  const handleOfflineContinue = (role = 'appa') => {
-    const isDad = role === 'appa';
-    const localUser = {
-      id: isDad ? 'usr-local-1' : 'usr-local-2',
-      username: isDad ? 'appa' : 'amma',
-      name: isDad ? (lang === 'ta' ? 'அப்பா (Appa)' : 'Dad (Home)') : (lang === 'ta' ? 'அம்மா (Amma)' : 'Mom (Shop)'),
-      householdId: 'hh-sync-101'
-    };
-    const localHousehold = {
-      id: 'hh-sync-101',
-      code: 'SYNC-101',
-      name: lang === 'ta' ? 'நமது குடும்பம் (Our Family)' : 'Our Family'
-    };
-    onAuthSuccess(localUser, localHousehold, null);
-  };
 
   // Copy Code Helper
   const handleCopyCode = () => {
@@ -803,59 +769,6 @@ export default function AuthPage({ onAuthSuccess, lang, setLang, currentUser, on
                   </button>
                 </div>
               </form>
-            )}
-
-            {/* Quick 1-Click Demo Logins & Offline Continue */}
-            {mode === 'signin' && (
-              <div className="auth-quick-actions-box">
-                <div className="quick-actions-title">
-                  <Sparkles size={14} />
-                  <span>{lang === 'ta' ? 'உடனடி 1-கிளிக் சோதனை (Demo Login):' : '1-Click Instant Demo Login:'}</span>
-                </div>
-
-                <div className="quick-demo-grid">
-                  <button
-                    type="button"
-                    className="quick-demo-btn dad-demo"
-                    onClick={() => handleQuickDemo('appa')}
-                    disabled={loading}
-                  >
-                    <span className="demo-emoji">👨</span>
-                    <div className="demo-text-col">
-                      <strong>{lang === 'ta' ? 'அப்பா (Home)' : 'Dad (Home)'}</strong>
-                      <span>Code: SYNC-101</span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="quick-demo-btn mom-demo"
-                    onClick={() => handleQuickDemo('amma')}
-                    disabled={loading}
-                  >
-                    <span className="demo-emoji">👩</span>
-                    <div className="demo-text-col">
-                      <strong>{lang === 'ta' ? 'அம்மா (Shop)' : 'Mom (Shop)'}</strong>
-                      <span>Code: SYNC-101</span>
-                    </div>
-                  </button>
-                </div>
-
-                <div className="offline-continue-wrap">
-                  <button
-                    type="button"
-                    className="offline-continue-btn"
-                    onClick={() => handleOfflineContinue('appa')}
-                  >
-                    <WifiOff size={14} />
-                    <span>
-                      {lang === 'ta'
-                        ? '🌐 இணையம் இல்லாமல் தொடங்க (Continue Offline)'
-                        : '🌐 Continue Offline without Server'}
-                    </span>
-                  </button>
-                </div>
-              </div>
             )}
           </>
         )}
