@@ -494,7 +494,7 @@ const MARKET_PRICES = {
 
 // Auto-suggest live market price
 app.get('/api/market-price', (req, res) => {
-  const query = (req.query.q || '').trim();
+  const query = (req.query.q || req.query.query || '').trim();
   const category = (req.query.category || '').toLowerCase();
 
   let matched = null;
@@ -519,9 +519,25 @@ app.get('/api/market-price', (req, res) => {
   }
 
   if (matched) {
-    res.json({ found: true, ...matched, lastUpdated: new Date().toISOString() });
+    res.json({ found: true, rate: matched.currentPrice, ...matched, lastUpdated: new Date().toISOString() });
   } else {
-    res.json({ found: false, currentPrice: null });
+    res.json({ found: false, rate: null, currentPrice: null });
+  }
+});
+
+app.get('/api/groceries/live-rate/:name', (req, res) => {
+  const query = (req.params.name || '').trim();
+  let matched = null;
+  for (const [key, val] of Object.entries(MARKET_PRICES)) {
+    if (key.toLowerCase() === query.toLowerCase() || query.toLowerCase().includes(key.toLowerCase()) || key.toLowerCase().includes(query.toLowerCase())) {
+      matched = { name: key, ...val };
+      break;
+    }
+  }
+  if (matched) {
+    res.json({ found: true, rate: matched.currentPrice, ...matched, lastUpdated: new Date().toISOString() });
+  } else {
+    res.json({ found: false, rate: null });
   }
 });
 

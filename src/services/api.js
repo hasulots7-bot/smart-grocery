@@ -282,8 +282,22 @@ export const groceryApi = {
   async fetchOnlineMarketPrice(query, quantity = 1, unit = 'kg') {
     try {
       return await safeFetchJson(
-        `/market-price?query=${encodeURIComponent(query)}&quantity=${quantity}&unit=${encodeURIComponent(unit)}`
+        `/market-price?q=${encodeURIComponent(query)}&quantity=${quantity}&unit=${encodeURIComponent(unit)}`
       );
+    } catch {
+      return null;
+    }
+  },
+
+  async fetchLiveRate(name, category = '') {
+    try {
+      const res = await safeFetchJson(
+        `/market-price?q=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}`
+      );
+      if (res && res.found && res.currentPrice) {
+        return { rate: res.currentPrice, ...res };
+      }
+      return null;
     } catch {
       return null;
     }
